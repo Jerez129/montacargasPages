@@ -235,6 +235,19 @@ table.plan{min-width:1180px}
 .stats{display:flex;flex-wrap:wrap;gap:8px 22px;color:var(--ink-2);font-size:13px}
 .stats b{color:var(--ink);font-weight:600;font-size:15px}
 #syncBtn{font-size:12.5px}
+table.plan.roster{min-width:980px}
+.roster select.dsel{min-width:96px;font-weight:500}
+.roster select.c-L{color:var(--muted);font-weight:400}
+.roster select.c-V,.roster select.c-P{font-style:italic;color:var(--ink-2)}
+.roster select.c-M,.roster select.c-T,.roster select.c-N{border-color:var(--ink-2)}
+.cal-r td,.cal-r th{padding:5px 6px}
+.cal-r th small{display:block;font-size:10.5px;color:var(--muted);font-weight:400}
+.rs{display:inline-block;min-width:44px;border-radius:4px;padding:3px 6px;font-size:12px;font-weight:600;background:var(--cellbg,transparent)}
+.rs.s-good{--cellbg:color-mix(in srgb,var(--good) 26%,transparent)}
+.rs.s-warn{--cellbg:color-mix(in srgb,var(--warn) 34%,transparent)}
+.rs.s-crit{--cellbg:color-mix(in srgb,var(--crit) 24%,transparent)}
+.rs.fut{color:var(--muted);border:1px dashed var(--axis)}
+.rs.off{color:var(--muted);font-weight:400}
 .mode{display:inline-block;font-family:var(--font);font-size:11.5px;font-weight:500;letter-spacing:0;text-transform:none;border-radius:999px;padding:1px 8px;border:1px solid var(--axis);color:var(--ink-2);margin-left:6px;vertical-align:1px}
 
 [hidden]{display:none!important}
@@ -289,7 +302,7 @@ table.plan{min-width:1180px}
     <button type="button" role="tab" data-view="adh">Adherencia</button>
     <button type="button" role="tab" data-view="ops">Operadores</button>
     <button type="button" role="tab" data-view="fal">Fallas y registros</button>
-    <button type="button" role="tab" data-view="plan">Plan</button>
+    <button type="button" role="tab" data-view="plan">Planificación</button>
   </nav>
 
   <div class="view" id="vPlan" hidden></div>
@@ -309,7 +322,7 @@ var SH=['M','T','N'], SHN={M:'Mañana',T:'Tarde',N:'Noche'}, SHI={M:0,T:1,N:2};
 var TIMING={ini:'Al inicio del turno',tarde:'Después del inicio',fuera:'Fuera del horario del turno'};
 
 function defCfg(){ return {meta:95, days:[1,1,1,1,1,1,0], start:{M:'06:00',T:'14:00',N:'22:00'}, tol:2, minDays:5, tz:2, units:{}, cfgv:4}; }
-var S={recs:[], items:[], plan:[], exc:[], showOld:false, cfg:defCfg(), month:null, shift:'all', view:'adh', fileName:'', base:'', sel:null, opSort:['n',-1], opOpen:{}, q:'', rq:''};
+var S={recs:[], items:[], roster:[], wk:null, cfg:defCfg(), month:null, shift:'all', view:'adh', fileName:'', base:'', sel:null, opSort:['n',-1], opOpen:{}, q:'', rq:''};
 
 /* ---------- Utilidades ---------- */
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -336,7 +349,7 @@ function plural(n,a,b){ return n+' '+(n===1?a:b); }
 
 /* ---------- Persistencia (solo comodidad de este navegador) ---------- */
 function save(){
-  try{ localStorage.setItem(KEY, JSON.stringify({cfg:S.cfg, plan:S.plan, exc:S.exc, month:S.month, shift:S.shift, view:S.view, fileName:S.fileName, base:S.base, items:S.items,
+  try{ localStorage.setItem(KEY, JSON.stringify({cfg:S.cfg, roster:S.roster, wk:S.wk, month:S.month, shift:S.shift, view:S.view, fileName:S.fileName, base:S.base, items:S.items,
     recs:S.recs.map(function(r){ return [r.id,r.y,r.m,r.d,r.min,r.t,r.unit,r.op,r.by,r.pend?1:0,r.fails,r.bad,r.com,r.link]; })})); }catch(_){}
 }
 function load(){
@@ -347,7 +360,7 @@ function load(){
     if(!(o.cfg&&o.cfg.cfgv>=3)){ S.cfg.start=defCfg().start; S.cfg.cfgv=3; }
     // v4: el export de VecFleet viene 2 h atrás de la hora del CD.
     if(S.cfg.cfgv<4){ if(!S.cfg.tz) S.cfg.tz=2; S.cfg.cfgv=4; }
-    S.plan=Array.isArray(o.plan)?o.plan:[]; S.exc=Array.isArray(o.exc)?o.exc:[];
+    S.roster=Array.isArray(o.roster)?o.roster.map(cleanRow):[]; S.wk=o.wk==null?null:+o.wk;
     S.month=o.month||null; S.shift=o.shift||'all'; S.view=o.view||'adh'; S.fileName=o.fileName||''; S.base=o.base||''; S.items=o.items||[];
     S.recs=(o.recs||[]).map(function(a){ return mkRec({id:a[0],y:a[1],m:a[2],d:a[3],min:a[4],t:a[5],unit:a[6],op:a[7],by:a[8],pend:!!a[9],fails:a[10],bad:a[11]||[],com:a[12]||'',link:a[13]||''}); });
   }catch(_){ S.recs=[]; }
@@ -410,7 +423,7 @@ function handleFiles(files){
     var fr=new FileReader();
     fr.onload=function(){
       try{
-        var wb=XLSX.read(new Uint8Array(fr.result),{type:'array'}), pl=readPlanBook(wb), res=pl?null:readBook(wb);
+        var wb=XLSX.read(new Uint8Array(fr.result),{type:'array'}), pl=readRosterBook(wb), res=pl?null:readBook(wb);
         if(pl) plans.push([pl,f.name]);
         else if(!res.recs.length) bad.push(f.name);
         else{
@@ -421,14 +434,14 @@ function handleFiles(files){
       }catch(e){ bad.push(f.name); }
       if(++done===files.length){
         if(names.length||bad.length) afterLoad(names,bad,added,upd);
-        if(plans.length){ var last=plans[plans.length-1]; importPlan(last[0],last[1]); }
+        if(plans.length){ var last=plans[plans.length-1]; importRoster(last[0],last[1]); }
       }
     };
     fr.readAsArrayBuffer(f);
   });
 }
 function afterLoad(names,bad,added,upd){
-  if(bad.length) show('msg','No encontré checklists ni plan en: '+bad.join(', ')+'. El export de VecFleet debe traer las columnas Fecha y hora de Creación, Chofer, TURNO y Movil; el plan, una hoja con Montacargas y Estado.');
+  if(bad.length) show('msg','No encontré checklists ni planificación en: '+bad.join(', ')+'. El export de VecFleet debe traer las columnas Fecha y hora de Creación, Chofer, TURNO y Movil; la planificación, una hoja con Semana, Operador y los días Lun a Dom.');
   if(names.length){
     S.fileName=names.join(', '); S.month=null; S.sel=null; S.opOpen={};
     show('info','Listo: '+plural(added,'checklist nuevo','checklists nuevos')+(upd?' y '+plural(upd,'actualizado','actualizados'):'')+' de '+S.fileName+'. Total cargado: '+S.recs.length+'.');
@@ -442,9 +455,10 @@ function hide(id){ document.getElementById(id).hidden=true; }
 var IX=null;
 function index(){
   S.recs.sort(function(a,b){ return a.dn-b.dn || SHI[a.t]-SHI[b.t] || (a.amin-b.amin+1440+720)%1440-720 || a.min-b.min; });
-  var cov={}, unitDays={}, months={}, lastDn=-Infinity, lastT=0, creator={};
+  var cov={}, covOp={}, opRaw={}, unitDays={}, months={}, lastDn=-Infinity, lastT=0, creator={};
   S.recs.forEach(function(r,i){
     var k=r.dn+'|'+r.t; (cov[k]=cov[k]||{})[r.unit]=(cov[k][r.unit]||[]).concat(i);
+    var o=((covOp[r.dn]=covOp[r.dn]||{})[r.key]=covOp[r.dn][r.key]||{}); (o[r.t]=o[r.t]||[]).push(i); opRaw[r.key]=r.op;
     var u=(unitDays[r.mk]=unitDays[r.mk]||{}); (u[r.unit]=u[r.unit]||{})[r.dn]=1;
     months[r.mk]=1;
     if(r.dn>lastDn||(r.dn===lastDn&&SHI[r.t]>lastT)){ lastDn=r.dn; lastT=SHI[r.t]; }
@@ -454,7 +468,7 @@ function index(){
   var owner={}; Object.keys(creator).forEach(function(b){ var best=null,n=-1; Object.keys(creator[b]).forEach(function(k){ if(creator[b][k]>n){ n=creator[b][k]; best=k; } }); owner[b]=best; });
   S.recs.forEach(function(r){ r.other=!!(r.by && owner[r.by] && owner[r.by]!==r.key); });
   var units={}; S.recs.forEach(function(r){ units[r.unit]=(units[r.unit]||0)+1; });
-  IX={cov:cov, unitDays:unitDays, months:Object.keys(months).sort(), lastDn:lastDn, lastT:lastT, units:units, owner:owner};
+  IX={cov:cov, covOp:covOp, opRaw:opRaw, unitDays:unitDays, months:Object.keys(months).sort(), lastDn:lastDn, lastT:lastT, units:units, owner:owner};
   if(!S.month || (S.month!=='all' && !months[S.month])) S.month=IX.months[IX.months.length-1]||null;
 }
 function timing(r){
@@ -466,45 +480,51 @@ function activeUnits(mk){
   var ud=IX.unitDays[mk]||{}, all={}; Object.keys(IX.units).forEach(function(u){ all[u]=1; });
   return Object.keys(all).filter(function(u){ var c=ucfg(u); if(c.mode==='off') return false; if(c.mode==='on') return true; return Object.keys(ud[u]||{}).length>=S.cfg.minDays; }).sort();
 }
-/* ---------- Plan registrado (base de datos) ---------- */
+/* ---------- Planificación semanal por operador (base de datos) ----------
+   S.roster: filas {semana (lunes), op (nombre como en VecFleet), dias (7 letras L→D: M/T/N, - libre, V vacaciones, P permiso), notas}. */
+var DCODE={M:'Mañana',T:'Tarde',N:'Noche','-':'Libre',V:'Vacaciones',P:'Permiso'};
 function monthRange(mk){ var a=mk.split('-'); return [dnOf(+a[0],+a[1],1), dnOf(+a[0],+a[1]+1,1)-1]; }
-function overlaps(r,a,b){ return (r.desde==null||r.desde<=b) && (r.hasta==null||r.hasta>=a); }
-// Un mes se mide con el plan registrado si algún periodo del plan lo cubre; si no, se deduce de los checklists.
-function planMode(mk){ var g=monthRange(mk); return S.plan.some(function(r){ return overlaps(r,g[0],g[1]); }); }
-function rowAt(u,dn){ var best=null; S.plan.forEach(function(r){ if(r.unit===u && overlaps(r,dn,dn) && (!best || (r.desde||0)>(best.desde||0))) best=r; }); return best; }
-function planUnits(){ var u={}; S.plan.forEach(function(r){ if(r.unit) u[r.unit]=1; }); return Object.keys(u).sort(); }
-// Montacargas esperados en un día y turno según el plan y las excepciones, con su operador asignado.
-function planSlot(dn,t,wd){
-  var k=t.toLowerCase(), asg={}, exp=[];
-  planUnits().forEach(function(u){ var r=rowAt(u,dn); if(r && r.estado==='Operando' && r[k] && (S.cfg.days[wd] || (wd===6 && r.dom))){ exp.push(u); asg[u]=r['op_'+k]||''; } });
-  var ex=S.exc.filter(function(e){ return e.desde<=dn && (e.hasta==null?e.desde:e.hasta)>=dn && (!e.turno||e.turno===t); });
-  ex.forEach(function(e){ if(e.tipo==='sin_op') exp=exp.filter(function(u){ return e.unit && e.unit!==u; }); });
-  ex.forEach(function(e){ if(e.tipo!=='extra') return;
-    var us=e.unit?[e.unit]:planUnits().filter(function(u){ var r=rowAt(u,dn); return r && r.estado==='Operando' && r[k]; });
-    us.forEach(function(u){ if(exp.indexOf(u)<0){ exp.push(u); var r=rowAt(u,dn); asg[u]=r?r['op_'+k]||'':''; } }); });
-  ex.forEach(function(e){ if(e.tipo==='operador') exp.forEach(function(u){ if(!e.unit||e.unit===u) asg[u]=e.op||''; }); });
-  exp.sort(); return {exp:exp, asg:asg};
-}
-// Evalúa un mes: cada celda es día × turno con los montacargas esperados y los que tienen checklist.
+function weekOf(dn){ return dn-fromDn(dn).wd; }
+var RX={};
+function indexRoster(){ RX={}; S.roster.forEach(function(r){ (RX[r.semana]=RX[r.semana]||{})[norm(r.op)]=r; }); }
+// Un mes se mide por operador si alguna semana planificada lo toca; si no, se deduce por montacargas.
+function rosterMode(mk){ var g=monthRange(mk); return Object.keys(RX).some(function(s){ s=+s; return s<=g[1] && s+6>=g[0]; }); }
+function rawName(key){ return (IX&&IX.opRaw[key]) || S.roster.filter(function(r){ return norm(r.op)===key; }).map(function(r){ return r.op; })[0] || key; }
+function label(c,k){ return c.mode==='op' ? opName(rawName(k)) : k; }
+// Evalúa un mes: cada celda es día × turno con lo esperado (operadores planificados, o montacargas si no hay planificación) y quién tiene checklist.
 function evalMonth(mk){
-  var g=monthRange(mk), first=g[0], last=g[1], pm=planMode(mk), units=pm?planUnits():activeUnits(mk), cells=[];
+  var g=monthRange(mk), first=g[0], last=g[1], rm=rosterMode(mk), units=rm?[]:activeUnits(mk), cells=[];
   for(var dn=first; dn<=last; dn++){
-    var p=fromDn(dn), op=!!S.cfg.days[p.wd];
+    var p=fromDn(dn), op=!!S.cfg.days[p.wd], wk=RX[weekOf(dn)]||{};
     SH.forEach(function(t){
       var fut = !IX || dn>IX.lastDn || (dn===IX.lastDn && SHI[t]>IX.lastT);
-      var slot=(IX&&IX.cov[dn+'|'+t])||{}, exp=[], got=[], extra=[], asg={};
-      if(!fut){
-        if(pm){ var ps=planSlot(dn,t,p.wd); exp=ps.exp; asg=ps.asg; }
-        else units.forEach(function(u){ if(op && ucfg(u)[t]!==false) exp.push(u); });
-        exp.forEach(function(u){ if(slot[u]) got.push(u); });
-        Object.keys(slot).forEach(function(u){ if(exp.indexOf(u)<0) extra.push(u); });
+      var slot=(IX&&IX.cov[dn+'|'+t])||{}, exp=[], got=[], extra=[], alt={};
+      if(rm){
+        var day=(IX&&IX.covOp[dn])||{};
+        if(!fut){
+          Object.keys(wk).forEach(function(k){ if(wk[k].dias.charAt(p.wd)!==t) return; exp.push(k);
+            var mine=day[k]||{};
+            if(mine[t]) got.push(k);
+            else { var o=SH.filter(function(x){ return mine[x]; })[0]; if(o){ got.push(k); alt[k]=o; } } });
+          // Llenó en este turno sin estar planificado ese día.
+          Object.keys(day).forEach(function(k){ if(day[k][t] && exp.indexOf(k)<0 && !(wk[k] && /[MTN]/.test(wk[k].dias.charAt(p.wd)))) extra.push(k); });
+        }
+        exp.sort(); cells.push({dn:dn, t:t, wd:p.wd, op:exp.length>0, fut:fut, exp:exp, got:got, extra:extra, alt:alt, slot:slot, mode:'op'});
+      } else {
+        if(!fut){
+          units.forEach(function(u){ if(op && ucfg(u)[t]!==false) exp.push(u); });
+          exp.forEach(function(u){ if(slot[u]) got.push(u); });
+          Object.keys(slot).forEach(function(u){ if(exp.indexOf(u)<0) extra.push(u); });
+        }
+        cells.push({dn:dn, t:t, wd:p.wd, op:op, fut:fut, exp:exp, got:got, extra:extra, alt:{}, slot:slot, mode:'unit'});
       }
-      cells.push({dn:dn, t:t, wd:p.wd, op:pm?exp.length>0||op:op, fut:fut, exp:exp, got:got, extra:extra, slot:slot, asg:asg});
     });
   }
-  return {mk:mk, units:units, cells:cells, plan:pm};
+  return {mk:mk, cells:cells, roster:rm};
 }
-function asgName(c,u){ var o=c.asg&&c.asg[u]; return o?opName(o):''; }
+// Turnos planificados que no tienen checklist del operador, con sus datos.
+function misses(cells){ var L=[]; cells.forEach(function(c){ if(c.mode==='op' && inShift(c.t)) c.exp.forEach(function(k){ if(c.got.indexOf(k)<0) L.push({k:k, dn:c.dn, t:c.t}); }); }); return L; }
+function periodMode(){ var m=periodMonths().map(rosterMode); return m.every(Boolean)?'op':m.some(Boolean)?'mix':'unit'; }
 function periodMonths(){ return S.month==='all' ? IX.months : [S.month]; }
 function periodCells(){ var c=[]; periodMonths().forEach(function(mk){ c=c.concat(evalMonth(mk).cells); }); return c; }
 function inShift(t){ return S.shift==='all' || S.shift===t; }
@@ -536,24 +556,23 @@ function renderAdh(){
   var cells=periodCells(), tot=sumCells(cells,function(c){ return inShift(c.t); }), recs=periodRecs();
   var slotsAny=cells.filter(function(c){ return inShift(c.t) && c.exp.length; }), slotsHit=slotsAny.filter(function(c){ return c.got.length; });
   var tm={ini:0,tarde:0,antes:0,fuera:0}; recs.forEach(function(r){ tm[timing(r)]++; });
-  var s=status(tot.p), h='';
-  var pmAll=periodMonths().map(planMode), pmTag=pmAll.every(Boolean)?'Plan registrado':pmAll.some(Boolean)?'Plan registrado en parte':'Plan deducido';
-  h+='<div class="month"><section class="card hero"><span class="lbl">Adherencia · '+esc(periodLabel())+'<span class="mode" title="'+esc(pmTag==='Plan deducido'?'No hay plan en la base para este periodo: se deduce de los checklists.':'Se mide contra el plan de la pestaña Plan.')+'">'+pmTag+'</span></span>'+
+  var s=status(tot.p), h='', pm=periodMode(), noun=pm==='op'?'turnos de operador':pm==='mix'?'turnos esperados':'turnos de montacargas';
+  var tag=pm==='op'?'Planificación por operador':pm==='mix'?'Planificación en parte del periodo':'Sin planificación: por montacargas';
+  h+='<div class="month"><section class="card hero"><span class="lbl">Adherencia · '+esc(periodLabel())+'<span class="mode" title="'+esc(pm==='unit'?'No hay planificación semanal para este periodo: se deduce por montacargas a partir de los checklists.':'Se mide contra la planificación semanal de operadores (pestaña Planificación).')+'">'+tag+'</span></span>'+
     '<div class="big num">'+pct(tot.p)+'</div>'+chip(s, s==='none'?null:(s==='good'?'Cumple la meta de '+S.cfg.meta+' %':'Meta '+S.cfg.meta+' %'))+meter(tot.p,s)+
-    '<div class="facts"><span><b class="num">'+tot.g+'</b> de <b class="num">'+tot.e+'</b> turnos de montacargas con checklist</span>'+
-    '<span><b class="num">'+slotsHit.length+'</b> de <b class="num">'+slotsAny.length+'</b> turnos con al menos un checklist</span>'+
-    '<span><b class="num">'+recs.length+'</b> checklists llenados'+(tot.x?' · '+tot.x+' en turnos sin plan':'')+'</span>'+
+    '<div class="facts"><span><b class="num">'+tot.g+'</b> de <b class="num">'+tot.e+'</b> '+noun+' con checklist</span>'+
+    (pm==='unit'?'<span><b class="num">'+slotsHit.length+'</b> de <b class="num">'+slotsAny.length+'</b> turnos con al menos un checklist</span>':'<span><b class="num">'+(tot.e-tot.g)+'</b> turnos planificados sin checklist</span>')+
+    '<span><b class="num">'+recs.length+'</b> checklists llenados'+(tot.x?' · '+tot.x+(pm==='unit'?' en turnos sin plan':' de operadores no planificados ese turno'):'')+'</span>'+
     '<span><b class="num">'+pct(div(tm.ini,recs.length))+'</b> llenados al inicio del turno · '+pct(div(tm.antes,recs.length))+' antes del inicio</span></div></section>';
   h+=monthChart()+'</div>';
+  if(pm!=='unit') h+=missCard(cells)+weekCard();
   h+=todoCard(cells,recs);
   h+=shiftCards(cells,recs);
   h+=calendarCard();
-  h+=unitCard(cells);
-  var pms=periodMonths().map(planMode), allP=pms.every(Boolean), noneP=!pms.some(Boolean);
+  h+=pm==='unit'?unitCard(cells):opCard(cells);
   h+='<section class="card notes"><span class="lbl">Cómo se mide</span><ul>'+
-    '<li>Adherencia = turnos de montacargas con checklist ÷ turnos esperados.</li>'+
-    (noneP?'':'<li><b>Con plan registrado'+(allP?'':' (meses que lo tienen)')+':</b> se espera un checklist por cada montacargas en estado "Operando" en los turnos marcados del plan, los días que opera el CD ('+S.cfg.days.map(function(v,i){ return v?DIA[i]:null; }).filter(Boolean).join(', ')+') y los domingos si el montacargas lo tiene marcado. Las excepciones quitan o agregan turnos y cambian el operador asignado. El plan se edita en la pestaña "Plan".</li>')+
-    (allP?'':'<li><b>Sin plan registrado'+(noneP?'':' (resto de meses)')+':</b> se deduce. Un montacargas cuenta en operación si tiene checklists en al menos '+S.cfg.minDays+' días del mes y se esperan los 3 turnos de lunes a sábado.</li>')+
+    (pm==='unit'?'':'<li><b>Con planificación'+(pm==='op'?'':' (semanas que la tienen)')+':</b> cada operador debe llenar un checklist en cada turno que tiene planificado (Mañana, Tarde o Noche). Cumple si en ese día y turno hay un checklist con su nombre en la columna Chofer, en cualquier montacargas. Si llenó ese día pero marcó otro turno, cuenta como cumplido y se señala. Libre, Vacaciones y Permiso no cuentan. La planificación se carga en la pestaña "Planificación".</li>')+
+    (pm==='op'?'':'<li><b>Sin planificación'+(pm==='unit'?'':' (resto del periodo)')+':</b> se deduce por montacargas. Un montacargas cuenta en operación si tiene checklists en al menos '+S.cfg.minDays+' días del mes y se esperan los 3 turnos de lunes a sábado.</li>')+
     '<li>El turno se toma de la columna TURNO. Un checklist de Noche hecho antes de las 8:00 cuenta para la noche del día anterior.</li>'+
     '<li>"Al inicio del turno" = llenado hasta '+S.cfg.tol+' h después del inicio ('+SH.map(function(t){ return SHN[t]+' '+S.cfg.start[t]; }).join(', ')+') o hasta 1 h antes.</li>'+
     (S.cfg.tz?'<li>A la hora del Excel se le suman '+S.cfg.tz+' h para llevarla a la hora del CD (el export de VecFleet viene atrasado).</li>':'')+
@@ -576,15 +595,18 @@ function todoCard(cells,recs){
   var L=[];
   var byT=SH.filter(inShift).map(function(t){ var x=sumCells(cells,function(c){ return c.t===t; }); return {t:t,x:x}; }).filter(function(o){ return o.x.e; });
   if(byT.length>1){ byT.sort(function(a,b){ return a.x.p-b.x.p; }); var w=byT[0]; if(status(w.x.p)!=='good') L.push([status(w.x.p),'El turno '+SHN[w.t]+' es el de menor adherencia: '+pct(w.x.p),'Faltaron '+(w.x.e-w.x.g)+' de '+w.x.e+' checklists esperados en ese turno.']); }
-  var um={}; cells.forEach(function(c){ if(!inShift(c.t)) return; c.exp.forEach(function(u){ var k=u+'|'+c.t; um[k]=um[k]||{u:u,t:c.t,e:0,g:0}; um[k].e++; if(c.got.indexOf(u)>=0) um[k].g++; }); });
+  var M=misses(cells), mo={}; M.forEach(function(x){ mo[x.k]=(mo[x.k]||0)+1; });
+  var mw=Object.keys(mo).sort(function(a,b){ return mo[b]-mo[a]; });
+  if(mw.length) L.push(['crit',plural(M.length,'turno planificado','turnos planificados')+' sin checklist del operador','Más turnos sin llenar: '+mw.slice(0,4).map(function(k){ return opName(rawName(k))+' ('+mo[k]+')'; }).join(', ')+'. El detalle está en "Operadores que no llenaron".']);
+  var um={}; cells.forEach(function(c){ if(!inShift(c.t) || c.mode!=='unit') return; c.exp.forEach(function(u){ var k=u+'|'+c.t; um[k]=um[k]||{u:u,t:c.t,e:0,g:0}; um[k].e++; if(c.got.indexOf(u)>=0) um[k].g++; }); });
   var uw=Object.keys(um).map(function(k){ return um[k]; }).filter(function(o){ return o.e>=5; }).sort(function(a,b){ return a.g/a.e-b.g/b.e; }).slice(0,2);
-  uw.forEach(function(o){ if(status(o.g/o.e)!=='good') L.push([status(o.g/o.e),'Montacargas '+o.u+' en turno '+SHN[o.t]+': '+pct(o.g/o.e),'Tiene checklist en '+o.g+' de '+o.e+' turnos. Confirma quién lo opera en ese turno o si no se usa (ajústalo en "Plan y reglas").']); });
+  uw.forEach(function(o){ if(status(o.g/o.e)!=='good') L.push([status(o.g/o.e),'Montacargas '+o.u+' en turno '+SHN[o.t]+': '+pct(o.g/o.e),'Tiene checklist en '+o.g+' de '+o.e+' turnos. Con la planificación semanal por operador se sabrá quién debía llenarlo.']); });
   var wd=[0,1,2,3,4,5,6].map(function(i){ var x=sumCells(cells,function(c){ return c.wd===i && inShift(c.t); }); return {i:i,x:x}; }).filter(function(o){ return o.x.e>=6; });
-  if(wd.length>1){ wd.sort(function(a,b){ return a.x.p-b.x.p; }); var d=wd[0]; if(status(d.x.p)!=='good') L.push([status(d.x.p),'Los '+DIAS[d.i]+' tienen la adherencia más baja: '+pct(d.x.p),d.x.g+' de '+d.x.e+' turnos de montacargas con checklist ese día de la semana.']); }
+  if(wd.length>1){ wd.sort(function(a,b){ return a.x.p-b.x.p; }); var d=wd[0]; if(status(d.x.p)!=='good') L.push([status(d.x.p),'Los '+DIAS[d.i]+' tienen la adherencia más baja: '+pct(d.x.p),d.x.g+' de '+d.x.e+' turnos esperados con checklist ese día de la semana.']); }
   var zero=cells.filter(function(c){ return inShift(c.t) && c.exp.length && !c.got.length; });
   if(zero.length) L.push(['crit',plural(zero.length,'turno completo','turnos completos')+' sin ningún checklist','Los más recientes: '+zero.slice(-4).reverse().map(function(c){ return fDate(c.dn)+' '+SHN[c.t]; }).join(' · ')+'.']);
-  var A=asgStats(cells), aw=Object.keys(A).map(function(k){ return A[k]; }).filter(function(a){ return a.asg>=5 && status(a.pa)!=='good'; }).sort(function(a,b){ return a.pa-b.pa; }).slice(0,3);
-  if(aw.length) L.push([status(aw[0].pa),'Operadores con menor adherencia en sus turnos asignados: '+aw.map(function(a){ return a.name+' ('+pct(a.pa)+')'; }).join(', '),'Según el plan: '+aw.map(function(a){ return a.name+' llenó '+a.got+' de '+a.asg; }).join(' · ')+'.']);
+  var altN=0; cells.forEach(function(c){ if(inShift(c.t)) altN+=Object.keys(c.alt).length; });
+  if(altN) L.push(['warn',plural(altN,'checklist marcado','checklists marcados')+' en un turno distinto al planificado','Llenaron el día que tocaba pero eligieron otro turno en VecFleet. Revisa que marquen el turno correcto.']);
   var ops=opStats(recs).filter(function(o){ return o.n>=10; });
   var late=ops.filter(function(o){ return o.ini/o.n<0.7; }).sort(function(a,b){ return a.ini/a.n-b.ini/b.n; }).slice(0,3);
   if(late.length) L.push(['warn','Fuera de la ventana de inicio: '+late.map(function(o){ return o.name+' ('+pct(o.ini/o.n)+' al inicio)'; }).join(', '),'Menos del 70 % de sus checklists se llenaron al inicio del turno (entre 1 h antes y '+S.cfg.tol+' h después).']);
@@ -625,7 +647,7 @@ function calendarCard(){
   var mk=S.month==='all' ? IX.months[IX.months.length-1] : S.month, ev=evalMonth(mk), byDay={};
   ev.cells.forEach(function(c){ (byDay[c.dn]=byDay[c.dn]||{})[c.t]=c; });
   var days=Object.keys(byDay).map(Number).sort(function(a,b){ return a-b; });
-  var h='<section class="card"><div class="sechead"><div><span class="lbl">Día a día · '+esc(mkLabel(mk))+'</span><p class="sub">Cada cuadro es un turno: montacargas con checklist de los esperados. Tócalo para ver quién llenó y qué faltó.'+(S.month==='all'?' Elige un mes arriba para cambiar el calendario.':'')+'</p></div>'+
+  var h='<section class="card"><div class="sechead"><div><span class="lbl">Día a día · '+esc(mkLabel(mk))+'</span><p class="sub">Cada cuadro es un turno: '+(ev.roster?'operadores planificados que llenaron':'montacargas con checklist de los esperados')+'. Tócalo para ver quién llenó y quién faltó.'+(S.month==='all'?' Elige un mes arriba para cambiar el calendario.':'')+'</p></div>'+
     '<div class="legend">'+chip('good','Completo')+chip('warn','Parcial')+chip('crit','Bajo o vacío')+'<span class="chip"><span style="display:inline-block;width:14px;height:14px;border:1px dashed var(--axis);border-radius:3px"></span>No opera</span></div></div>';
   h+='<div class="scroll" style="margin-top:12px"><table class="cal"><thead><tr><th></th>'+days.map(function(dn){ var p=fromDn(dn); return '<th class="'+(S.cfg.days[p.wd]?'':'we')+'">'+p.d+'<small>'+DIA1[p.wd]+'</small></th>'; }).join('')+'</tr></thead><tbody>';
   SH.forEach(function(t){
@@ -642,7 +664,8 @@ function calendarCard(){
 function calBtn(c){
   if(c.fut) return '<button type="button" class="fut" tabindex="-1" aria-hidden="true"></button>';
   var on=S.sel&&S.sel.dn===c.dn&&S.sel.t===c.t?' on':'', miss=c.exp.filter(function(u){ return c.got.indexOf(u)<0; });
-  var tip=fDate(c.dn)+' · '+SHN[c.t]+'\n'+(c.exp.length?c.got.length+' de '+c.exp.length+' montacargas con checklist':'No opera'+(c.extra.length?' · '+c.extra.length+' checklist extra':''))+(miss.length?'\nFaltó: '+miss.map(function(u){ var n=asgName(c,u); return u+(n?' ('+n+')':''); }).join(', '):'');
+  var noun=c.mode==='op'?'operadores':'montacargas';
+  var tip=fDate(c.dn)+' · '+SHN[c.t]+'\n'+(c.exp.length?c.got.length+' de '+c.exp.length+' '+noun+' con checklist':(c.mode==='op'?'Nadie planificado':'No opera')+(c.extra.length?' · '+c.extra.length+' checklist extra':''))+(miss.length?'\nFaltó: '+miss.map(function(u){ return label(c,u); }).join(', '):'');
   if(!c.exp.length) return '<button type="button" class="off'+on+'" data-slot="'+c.dn+'|'+c.t+'" data-tip="'+esc(tip)+'">'+(c.extra.length?'+'+c.extra.length:'')+'</button>';
   return '<button type="button" class="s-'+status(c.got.length/c.exp.length)+on+'" data-slot="'+c.dn+'|'+c.t+'" data-tip="'+esc(tip)+'">'+c.got.length+'/'+c.exp.length+'</button>';
 }
@@ -650,8 +673,12 @@ function slotDetail(c){
   var miss=c.exp.filter(function(u){ return c.got.indexOf(u)<0; }), ids=[];
   Object.keys(c.slot).forEach(function(u){ ids=ids.concat(c.slot[u]); });
   var rr=ids.map(function(i){ return S.recs[i]; }).sort(function(a,b){ return (a.amin-b.amin+1440+720)%1440-720; });
-  var h='<div class="detail"><div class="sechead"><div><h2>'+esc(fDate(c.dn)+' · turno '+SHN[c.t])+'</h2><p class="sub">'+(c.exp.length?c.got.length+' de '+c.exp.length+' montacargas con checklist':'Día sin operación en el plan')+'</p></div><button type="button" class="quiet" data-close="1">Cerrar</button></div>';
-  h+='<div class="pills">'+c.exp.map(function(u){ var ok=c.got.indexOf(u)>=0; var n=asgName(c,u); return '<span class="pill s-'+(ok?'good':'crit')+'">'+(ok?'✓ ':'✕ ')+esc(u)+(n?' · '+esc(n):'')+'</span>'; }).join('')+c.extra.map(function(u){ return '<span class="pill">+ '+esc(u)+' (fuera del plan)</span>'; }).join('')+'</div>';
+  if(c.mode==='op'){ ids=[]; c.got.forEach(function(k){ var d=(IX.covOp[c.dn]||{})[k]||{}; ids=ids.concat(d[c.alt[k]||c.t]||[]); }); c.extra.forEach(function(k){ ids=ids.concat(((IX.covOp[c.dn]||{})[k]||{})[c.t]||[]); });
+    rr=ids.map(function(i){ return S.recs[i]; }).sort(function(a,b){ return (a.amin-b.amin+1440+720)%1440-720; }); }
+  var noun=c.mode==='op'?'operadores planificados con checklist':'montacargas con checklist';
+  var h='<div class="detail"><div class="sechead"><div><h2>'+esc(fDate(c.dn)+' · turno '+SHN[c.t])+'</h2><p class="sub">'+(c.exp.length?c.got.length+' de '+c.exp.length+' '+noun:(c.mode==='op'?'Nadie planificado en este turno':'Día sin operación en el plan'))+'</p></div><button type="button" class="quiet" data-close="1">Cerrar</button></div>';
+  h+='<div class="pills">'+c.exp.map(function(u){ var ok=c.got.indexOf(u)>=0; return '<span class="pill s-'+(ok?'good':'crit')+'">'+(ok?'✓ ':'✕ ')+esc(label(c,u))+(c.alt[u]?' (marcó '+SHN[c.alt[u]]+')':'')+'</span>'; }).join('')+
+    c.extra.map(function(u){ return '<span class="pill">+ '+esc(label(c,u))+' ('+(c.mode==='op'?'no planificado':'fuera del plan')+')</span>'; }).join('')+'</div>';
   if(rr.length) h+=recTable(rr,true); else h+='<p class="empty-s">No se llenó ningún checklist en este turno.</p>';
   return h+'</div>';
 }
@@ -670,6 +697,44 @@ function unitCard(cells){
   return h+'</tbody></table></div></section>';
 }
 
+// La respuesta directa: qué operador planificado no llenó, y cuándo.
+function missCard(cells){
+  var M=misses(cells), by={}; M.forEach(function(x){ (by[x.k]=by[x.k]||[]).push(x); });
+  var ks=Object.keys(by).sort(function(a,b){ return by[b].length-by[a].length || opName(rawName(a)).localeCompare(opName(rawName(b))); });
+  var P=planStats(cells);
+  var h='<section class="card"><div class="sechead"><div><span class="lbl">Operadores que no llenaron · '+esc(periodLabel())+'</span><p class="sub">Turnos planificados sin checklist del operador. Los más recientes primero.</p></div></div>';
+  if(!ks.length) return h+'<p class="sub" style="margin-top:8px">'+chip('good','Todos los operadores planificados llenaron su checklist.')+'</p></section>';
+  h+='<div class="scroll" style="margin-top:8px"><table><thead><tr><th>Operador</th><th class="r">Sin llenar</th><th class="r">Planificados</th><th>Cumplimiento</th><th>Turnos sin checklist</th></tr></thead><tbody>'+
+    ks.map(function(k){ var p=P[k]; return '<tr><td><strong>'+esc(opName(rawName(k)))+'</strong></td><td class="r">'+by[k].length+'</td><td class="r">'+p.e+'</td><td>'+mini(p.g/p.e)+'</td>'+
+      '<td>'+by[k].slice().reverse().map(function(x){ return '<span class="tag bad" style="margin:1px 3px 1px 0">'+esc(fDate(x.dn))+' · '+SHN[x.t]+'</span>'; }).join('')+'</td></tr>'; }).join('')+'</tbody></table></div></section>';
+  return h;
+}
+// Por operador planificado: turnos planificados, cumplidos y marcados en otro turno.
+function planStats(cells){
+  var P={}; cells.forEach(function(c){ if(c.mode!=='op' || !inShift(c.t)) return; c.exp.forEach(function(k){ var o=P[k]=P[k]||{e:0,g:0,alt:0}; o.e++; if(c.got.indexOf(k)>=0) o.g++; if(c.alt[k]) o.alt++; }); });
+  return P;
+}
+function weekCard(){
+  var ws={}; periodMonths().forEach(function(mk){ evalMonth(mk).cells.forEach(function(c){ if(c.mode!=='op'||!inShift(c.t)) return; var w=weekOf(c.dn), o=ws[w]=ws[w]||{e:0,g:0,ops:{},T:{}}; o.e+=c.exp.length; o.g+=c.got.length; c.exp.forEach(function(k){ o.ops[k]=1; });
+    SH.forEach(function(t){ o.T[t]=o.T[t]||{e:0,g:0}; }); o.T[c.t].e+=c.exp.length; o.T[c.t].g+=c.got.length; }); });
+  var keys=Object.keys(ws).map(Number).filter(function(w){ return ws[w].e; }).sort(function(a,b){ return b-a; });
+  if(!keys.length) return '';
+  return '<section class="card"><span class="lbl">Por semana</span><div class="scroll" style="margin-top:8px"><table><thead><tr><th>Semana</th><th class="r">Operadores</th>'+SH.filter(inShift).map(function(t){ return '<th class="c">'+SHN[t]+'</th>'; }).join('')+'<th class="c">Total</th><th class="r">Sin llenar</th></tr></thead><tbody>'+
+    keys.map(function(w){ var o=ws[w]; return '<tr class="click" data-week="'+w+'" tabindex="0"><td>'+esc(fDate(w)+' – '+fDate(w+6))+'</td><td class="r">'+Object.keys(o.ops).length+'</td>'+SH.filter(inShift).map(function(t){ return hcell(o.T[t].g,o.T[t].e); }).join('')+hcell(o.g,o.e)+'<td class="r">'+(o.e-o.g)+'</td></tr>'; }).join('')+
+    '</tbody></table></div><p class="sub" style="margin-top:6px">Toca una semana para ver su planificación.</p></section>';
+}
+function opCard(cells){
+  var P=planStats(cells), recs=periodRecs(), ru={}; recs.forEach(function(r){ var o=ru[r.key]=ru[r.key]||{n:0,units:{}}; o.n++; o.units[r.unit]=(o.units[r.unit]||0)+1; });
+  var T={}; cells.forEach(function(c){ if(c.mode!=='op'||!inShift(c.t)) return; c.exp.forEach(function(k){ var o=(T[k]=T[k]||{})[c.t]=(T[k]||{})[c.t]||{e:0,g:0}; o.e++; if(c.got.indexOf(k)>=0) o.g++; }); });
+  var ks=Object.keys(P).sort(function(a,b){ return P[a].g/P[a].e-P[b].g/P[b].e || opName(rawName(a)).localeCompare(opName(rawName(b))); });
+  return '<section class="card"><div class="sechead"><div><span class="lbl">Por operador · '+esc(periodLabel())+'</span><p class="sub">Solo operadores planificados. Los de menor cumplimiento arriba.</p></div></div><div class="scroll" style="margin-top:8px"><table><thead><tr><th>Operador</th>'+
+    SH.filter(inShift).map(function(t){ return '<th class="c">'+SHN[t]+'</th>'; }).join('')+'<th class="c">Total</th><th class="r">Otro turno</th><th class="r">Checklists</th><th>Montacargas</th></tr></thead><tbody>'+
+    ks.map(function(k){ var p=P[k], u=ru[k];
+      return '<tr><td><strong>'+esc(opName(rawName(k)))+'</strong></td>'+SH.filter(inShift).map(function(t){ var o=T[k][t]; return o?hcell(o.g,o.e):'<td class="hc s-none"><span>—</span></td>'; }).join('')+hcell(p.g,p.e)+
+        '<td class="r">'+(p.alt||'<span class="dim">0</span>')+'</td><td class="r">'+(u?u.n:0)+'</td><td>'+(u?Object.keys(u.units).sort(function(a,b){ return u.units[b]-u.units[a]; }).map(function(x){ return esc(x)+' <span class="dim">('+u.units[x]+')</span>'; }).join(', '):'<span class="dim">—</span>')+'</td></tr>'; }).join('')+
+    '</tbody></table></div></section>';
+}
+
 /* ---------- Operadores ---------- */
 function opStats(recs){
   var m={};
@@ -680,40 +745,34 @@ function opStats(recs){
   });
   return Object.keys(m).map(function(k){ var o=m[k]; o.nd=Object.keys(o.days).length; o.pi=o.ini/o.n; return o; });
 }
-// Turnos asignados en el plan a cada operador: cuántos tuvieron checklist del montacargas y cuántos lo llenó él.
-function asgStats(cells){
-  var A={};
-  cells.forEach(function(c){ if(!inShift(c.t)) return; c.exp.forEach(function(u){ var op=c.asg&&c.asg[u]; if(!op) return; var k=norm(op);
-    var a=A[k]=A[k]||{key:k,name:opName(op),asg:0,got:0,self:0}; a.asg++;
-    if(c.got.indexOf(u)>=0){ a.got++; if((c.slot[u]||[]).some(function(i){ return S.recs[i].key===k; })) a.self++; } }); });
-  Object.keys(A).forEach(function(k){ A[k].pa=A[k].got/A[k].asg; });
-  return A;
-}
 function renderOps(){
-  var recs=periodRecs(), ops=opStats(recs), q=norm(S.q), A=asgStats(periodCells()), hasA=Object.keys(A).length>0;
-  ops.forEach(function(o){ var a=A[o.key]; o.asg=a?a.asg:0; o.pa=a?a.pa:null; o.self=a?a.self:0; if(a) a.seen=1; });
-  Object.keys(A).forEach(function(k){ if(!A[k].seen) ops.push({key:k,name:A[k].name,n:0,nd:0,M:0,T:0,N:0,pi:null,antes:0,fuera:0,other:0,empty:0,fails:0,last:null,units:{},asg:A[k].asg,pa:A[k].pa,self:A[k].self}); });
+  var cells=periodCells(), recs=periodRecs(), ops=opStats(recs), q=norm(S.q), A=planStats(cells), hasA=Object.keys(A).length>0, MS={};
+  misses(cells).forEach(function(x){ (MS[x.k]=MS[x.k]||[]).push(x); });
+  ops.forEach(function(o){ var a=A[o.key]; o.asg=a?a.e:0; o.pa=a?a.g/a.e:null; o.miss=a?a.e-a.g:0; if(a) a.seen=1; });
+  Object.keys(A).forEach(function(k){ if(!A[k].seen) ops.push({key:k,name:opName(rawName(k)),n:0,nd:0,M:0,T:0,N:0,pi:null,antes:0,fuera:0,other:0,empty:0,fails:0,last:null,units:{},asg:A[k].e,pa:A[k].g/A[k].e,miss:A[k].e-A[k].g}); });
   if(q) ops=ops.filter(function(o){ return norm(o.name).indexOf(q)>=0; });
   var k=S.opSort[0], d=S.opSort[1], val=function(o){ var v=k==='last'?(o.last?o.last.dn:-1):o[k]; return v==null?-1:v; };
   ops.sort(function(a,b){ var x=k==='name'?a.name.localeCompare(b.name):val(a)-val(b); return x*d || b.n-a.n; });
   var all=recs.length, ini=recs.filter(function(r){ return timing(r)==='ini'; }).length;
-  var cols=[['name','Operador','']].concat(hasA?[['asg','Asignados','turnos en el plan'],['pa','Adherencia','turnos asignados']]:[]).concat([['n','Checklists',''],['nd','Días',''],['M','Mañana',''],['T','Tarde',''],['N','Noche',''],['pi','Al inicio','del turno'],['antes','Antes','del inicio'],['fuera','Fuera','de horario'],['other','Otro usuario','lo llenó'],['empty','Comentario','vacío'],['fails','Con fallas',''],['last','Último','checklist']]);
+  var cols=[['name','Operador','']].concat(hasA?[['asg','Planificados','turnos'],['pa','Cumplimiento','de lo planificado'],['miss','Sin llenar','turnos']]:[]).concat([['n','Checklists',''],['nd','Días',''],['M','Mañana',''],['T','Tarde',''],['N','Noche',''],['pi','Al inicio','del turno'],['antes','Antes','del inicio'],['fuera','Fuera','de horario'],['other','Otro usuario','lo llenó'],['empty','Comentario','vacío'],['fails','Con fallas',''],['last','Último','checklist']]);
   var h='<section class="card"><div class="sechead"><div><span class="lbl">Operadores · '+esc(periodLabel())+'</span><p class="sub">'+plural(opStats(recs).length,'operador','operadores')+' · '+all+' checklists · '+pct(div(ini,all))+' al inicio del turno. Toca un nombre para ver sus checklists.</p></div>'+
     '<div class="tools"><label class="vh" for="opQ">Buscar operador</label><input type="search" id="opQ" placeholder="Buscar operador" value="'+esc(S.q)+'"></div></div>';
   h+='<div class="scroll" style="margin-top:8px"><table class="ops"><thead><tr>'+cols.map(function(c,i){ return '<th class="'+(i?'r':'')+'" data-sort="'+c[0]+'"'+(k===c[0]?' aria-sort="'+(d>0?'ascending':'descending')+'"':'')+'>'+c[1]+(c[2]?'<small>'+c[2]+'</small>':'')+'</th>'; }).join('')+'</tr></thead><tbody>';
   ops.forEach(function(o){
     var open=!!S.opOpen[o.key];
     h+='<tr class="p" aria-expanded="'+open+'"><td><button type="button" data-op="'+esc(o.key)+'">'+esc(o.name)+'</button></td>'+
-      (hasA?'<td class="r">'+(o.asg||'<span class="dim">—</span>')+'</td><td class="r">'+(o.asg?'<span data-tip="'+esc(Math.round(o.pa*o.asg)+' de '+o.asg+' turnos asignados con checklist del montacargas\n'+o.self+' llenados por él mismo')+'">'+mini(o.pa)+'</span>':'<span class="dim">—</span>')+'</td>':'')+
+      (hasA?'<td class="r">'+(o.asg||'<span class="dim">—</span>')+'</td><td class="r">'+(o.asg?mini(o.pa):'<span class="dim">—</span>')+'</td><td class="r">'+(o.asg?(o.miss?'<span class="tag bad">'+o.miss+'</span>':'<span class="dim">0</span>'):'<span class="dim">—</span>')+'</td>':'')+
       '<td class="r">'+o.n+'</td><td class="r">'+o.nd+'</td><td class="r">'+o.M+'</td><td class="r">'+o.T+'</td><td class="r">'+o.N+'</td>'+
       '<td class="r">'+(o.n?mini(o.pi,o.pi>=0.9?'good':o.pi>=0.7?'warn':'crit'):'<span class="dim">—</span>')+'</td><td class="r">'+tagN(o.antes,o.n)+'</td><td class="r">'+tagN(o.fuera,o.n)+'</td><td class="r">'+tagN(o.other,o.n)+'</td><td class="r">'+tagN(o.empty,o.n)+'</td><td class="r">'+(o.fails||'<span class="dim">0</span>')+'</td>'+
       '<td class="r">'+(o.last?esc(fDate(o.last.dn))+' <span class="dim">'+SHN[o.last.t]+'</span>':'<span class="dim">Sin checklists</span>')+'</td></tr>';
-    if(open){ var rr=recs.filter(function(r){ return r.key===o.key; }).slice().reverse(); h+='<tr class="d"><td colspan="'+cols.length+'"><p class="sub" style="margin-bottom:6px">Montacargas: '+Object.keys(o.units).map(function(u){ return esc(u)+' ('+o.units[u]+')'; }).join(', ')+'</p>'+recTable(rr.slice(0,60),false,'inner')+(rr.length>60?'<p class="sub" style="margin-top:6px">Mostrando los 60 más recientes de '+rr.length+'.</p>':'')+'</td></tr>'; }
+    if(open){ var rr=recs.filter(function(r){ return r.key===o.key; }).slice().reverse(); h+='<tr class="d"><td colspan="'+cols.length+'">'+
+      (MS[o.key]?'<p style="margin-bottom:6px"><b>Turnos planificados sin checklist:</b> '+MS[o.key].slice().reverse().map(function(x){ return '<span class="tag bad" style="margin:1px 3px 1px 0">'+esc(fDate(x.dn))+' · '+SHN[x.t]+'</span>'; }).join('')+'</p>':'')+
+      '<p class="sub" style="margin-bottom:6px">Montacargas: '+Object.keys(o.units).map(function(u){ return esc(u)+' ('+o.units[u]+')'; }).join(', ')+'</p>'+recTable(rr.slice(0,60),false,'inner')+(rr.length>60?'<p class="sub" style="margin-top:6px">Mostrando los 60 más recientes de '+rr.length+'.</p>':'')+'</td></tr>'; }
   });
   if(!ops.length) h+='<tr><td colspan="'+cols.length+'" class="empty-s">Sin operadores para esta búsqueda.</td></tr>';
   h+='</tbody></table></div></section>';
   h+='<section class="card notes"><span class="lbl">Qué significa cada columna</span><ul>'+
-    (hasA?'<li><b>Asignados / Adherencia:</b> turnos en que el plan le asigna un montacargas, y cuántos de esos turnos tuvieron checklist de ese montacargas.</li>':'')+
+    (hasA?'<li><b>Planificados / Cumplimiento / Sin llenar:</b> turnos que tiene en la planificación semanal, qué parte llenó su checklist y cuántos quedaron sin llenar. Toca el nombre para ver las fechas.</li>':'')+
     '<li><b>Al inicio del turno:</b> checklists llenados desde 1 h antes hasta '+S.cfg.tol+' h después del inicio del turno marcado.</li>'+
     '<li><b>Antes del inicio:</b> llenado entre 3 h y 1 h antes del inicio del turno marcado.</li>'+
     '<li><b>Fuera de horario:</b> la hora de llenado no cae dentro de las 8 h del turno marcado ni en las 3 h previas (posible turno mal seleccionado).</li>'+
@@ -753,12 +812,12 @@ function bars(a){
 /* ---------- Plan y reglas ---------- */
 function renderEditor(){
   var c=S.cfg;
-  var h='<div class="sechead"><div><h2>Reglas</h2><p class="sub">Meta, horarios y días que opera el CD. Se guardan en la base de datos y aplican para todos. Qué montacargas y operadores se esperan se define en la pestaña "Plan".</p></div><button type="button" class="quiet" id="resetCfg">Restablecer valores</button></div>';
+  var h='<div class="sechead"><div><h2>Reglas</h2><p class="sub">Meta, horarios y días que opera el CD. Se guardan en la base de datos y aplican para todos. Qué operador trabaja cada turno se define en la pestaña "Planificación".</p></div><button type="button" class="quiet" id="resetCfg">Restablecer valores</button></div>';
   h+='<div class="rules"><label>Meta de adherencia (%)<input type="number" min="1" max="100" data-cfg="meta" value="'+c.meta+'"></label>'+
     SH.map(function(t){ return '<label>Inicio turno '+SHN[t]+'<input type="time" data-start="'+t+'" value="'+esc(c.start[t])+'"></label>'; }).join('')+
     '<label>Ajuste de hora del Excel (h)<input type="number" min="-12" max="12" step="1" data-cfg="tz" value="'+(c.tz||0)+'"></label>'+
     '<label>Tolerancia al inicio (h)<input type="number" min="0.5" max="8" step="0.5" data-cfg="tol" value="'+c.tol+'"></label>'+
-    '<label>Días mínimos para "en operación" (meses sin plan)<input type="number" min="1" max="31" data-cfg="minDays" value="'+c.minDays+'"></label></div>';
+    '<label>Días mínimos para "en operación" (periodos sin planificación)<input type="number" min="1" max="31" data-cfg="minDays" value="'+c.minDays+'"></label></div>';
   h+='<div><span class="lbl">Días que opera el CD</span><div class="days" style="margin-top:6px">'+DIA.map(function(d,i){ return '<label><input type="checkbox" data-day="'+i+'"'+(c.days[i]?' checked':'')+'> '+d+'</label>'; }).join('')+'</div></div>';
   document.getElementById('editor').innerHTML=h;
 }
@@ -803,228 +862,206 @@ function write(method, path, body){
 function cfgNow(){ var c=S.cfg; return {meta:c.meta, days:c.days, start:c.start, tol:c.tol, minDays:c.minDays, tz:c.tz, cfgv:c.cfgv}; }
 var cfgT=null;
 function syncCfg(){ clearTimeout(cfgT); cfgT=setTimeout(function(){ write('PUT','/api/config/ajustes',cfgNow()).catch(function(){}); }, 600); }
-var rowT={};
-function saveRow(kind,id){
-  clearTimeout(rowT[kind+id]);
-  rowT[kind+id]=setTimeout(function(){ delete rowT[kind+id]; var r=(kind==='plan'?S.plan:S.exc).filter(function(x){ return x.id===id; })[0]; if(r) write('PUT','/api/'+kind+'/'+id,r).catch(function(){}); }, 500);
-}
-function delRow(kind,id){ clearTimeout(rowT[kind+id]); write('DELETE','/api/'+kind+'/'+id).catch(function(){}); }
-/* Reemplaza el plan completo de la base con el del navegador (al cargar un Excel o para reintentar). */
-function pushAll(){ return write('POST','/api/import',{plan:S.plan, exc:S.exc}).then(function(d){ DB.dirty=false; return d; }); }
-function bitN(v){ return v?1:0; }
-function cleanPlan(r){ return {id:r.id, unit:String(r.unit||''), estado:r.estado||'Operando', desde:r.desde==null?null:+r.desde, hasta:r.hasta==null?null:+r.hasta,
-  m:bitN(r.m), t:bitN(r.t), n:bitN(r.n), op_m:r.op_m||'', op_t:r.op_t||'', op_n:r.op_n||'', dom:bitN(r.dom), notas:r.notas||''}; }
-function cleanExc(e){ return {id:e.id, desde:+e.desde, hasta:e.hasta==null?+e.desde:+e.hasta, unit:e.unit||'', turno:e.turno||'', tipo:e.tipo, op:e.op||'', motivo:e.motivo||''}; }
+/* Guarda una semana completa (debounce) o todas las semanas (al cargar un Excel o para reintentar). */
+var weekT={};
+function weekRowsOf(s){ return S.roster.filter(function(r){ return r.semana===s; }).map(function(r){ return {op:r.op, dias:r.dias, notas:r.notas||''}; }); }
+function saveWeek(s){ clearTimeout(weekT[s]); weekT[s]=setTimeout(function(){ delete weekT[s]; write('PUT','/api/roster/'+s,{rows:weekRowsOf(s)}).catch(function(){}); }, 600); }
+function pushWeeks(list){ return write('POST','/api/roster',{weeks:list.map(function(s){ return {semana:s, rows:weekRowsOf(s)}; })}); }
+function pushAll(){ var ws={}; S.roster.forEach(function(r){ ws[r.semana]=1; }); var list=Object.keys(ws).map(Number);
+  if(!list.length){ DB.dirty=false; return Promise.resolve({weeks:0, rows:0}); }
+  return pushWeeks(list).then(function(d){ DB.dirty=false; return d; }); }
+function cleanRow(r){ return {semana:+r.semana, op:String(r.op||'').trim(), dias:(String(r.dias||'')+'-------').slice(0,7).toUpperCase(), notas:r.notas||''}; }
 function applyCfg(c){
   var tz=S.cfg.tz;
   S.cfg=Object.assign(defCfg(), S.cfg, c); S.cfg.start=Object.assign(defCfg().start, c.start||{});
   if(S.cfg.tz!==tz && S.recs.length){ S.recs.forEach(mkRec); index(); }
 }
-/* Trae el plan y las reglas de la base y reemplaza la copia del navegador. */
+/* Trae la planificación y las reglas de la base y reemplaza la copia del navegador. */
 function pullRemote(){
   setSync('load');
   return api('GET','/api/state').then(function(d){
-    var empty=!d.plan.length && !d.exc.length;
-    if(empty && !DB.ready && (S.plan.length||S.exc.length) && confirm('La base de datos todavía no tiene plan. ¿Subir el plan que tienes en este navegador?')){
+    var empty=!(d.roster||[]).length;
+    if(empty && !DB.ready && S.roster.length && confirm('La base de datos todavía no tiene planificación. ¿Subir la que tienes en este navegador?')){
       DB.ready=true; return pushAll().then(pullRemote).catch(function(){});
     }
     DB.ready=true;
-    if(!DB.dirty){ S.plan=d.plan.map(cleanPlan); S.exc=d.exc.map(cleanExc); }
+    if(!DB.dirty){ S.roster=(d.roster||[]).map(cleanRow); indexRoster(); }
     if(d.config && d.config.ajustes) applyCfg(d.config.ajustes);
     DB.updated=d.updated ? d.updated.replace(' ','T')+'Z' : null;
     save(); render();
     if(DB.dirty) setSync('err','Cambios sin guardar en la base (toca aquí)');
-    else setSync('ok', empty ? 'Base de datos: sin plan todavía' : 'Base de datos: plan al día');
+    else setSync('ok', empty ? 'Base de datos: sin planificación todavía' : 'Base de datos: al día');
   }).catch(function(){ setSync('off'); });
 }
 
-/* ---------- Pestaña Plan ---------- */
-var ESTADOS=['Operando','En taller','Reserva','Baja'];
-var TIPO={sin_op:'Sin operación', extra:'Operación extra', operador:'Cambio de operador'};
-var PLAN_H=['Montacargas','Estado','Desde','Hasta','Mañana','Operador Mañana','Tarde','Operador Tarde','Noche','Operador Noche','Domingos','Notas','ID'];
-var EXC_H=['Desde','Hasta','Montacargas','Turno','Tipo','Operador','Motivo','ID'];
-function isoOf(dn){ if(dn==null) return ''; var p=fromDn(dn); return p.y+'-'+String(p.m).padStart(2,'0')+'-'+String(p.d).padStart(2,'0'); }
-function dnIso(s){ var a=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s||''); return a?dnOf(+a[1],+a[2],+a[3]):null; }
-function newId(p){ return p+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+/* ---------- Pestaña Planificación (semanal, por operador) ---------- */
+var CODES=['-','M','T','N','V','P'];
+var ROSTER_H=['Semana (lunes)','Operador','Lun','Mar','Mié','Jue','Vie','Sáb','Dom','Notas'];
 function todayDn(){ var t=new Date(); return dnOf(t.getFullYear(),t.getMonth()+1,t.getDate()); }
-function rng(r){ return (r.desde==null?'siempre':fDateY(r.desde))+' – '+(r.hasta==null?'sin fin':fDateY(r.hasta)); }
-function knownUnits(){ var u={}; if(IX) Object.keys(IX.units).forEach(function(k){ u[k]=1; }); S.plan.forEach(function(r){ if(r.unit) u[r.unit]=1; }); return Object.keys(u).sort(); }
-function knownOps(){ var o={}; S.recs.forEach(function(r){ o[r.op]=1; }); S.plan.forEach(function(r){ ['op_m','op_t','op_n'].forEach(function(k){ if(r[k]) o[r[k]]=1; }); }); S.exc.forEach(function(e){ if(e.op) o[e.op]=1; });
-  return Object.keys(o).sort(function(a,b){ return opName(a).localeCompare(opName(b)); }); }
-function cross(a,b){ return (a.desde==null||b.hasta==null||a.desde<=b.hasta) && (b.desde==null||a.hasta==null||b.desde<=a.hasta); }
-function planWarns(){
-  var W=[], seen={}, ops={}; S.recs.forEach(function(r){ ops[r.key]=1; });
-  function add(id,msg){ if(!seen[msg]){ seen[msg]=1; W.push([id,msg]); } }
-  S.plan.forEach(function(a,i){
-    if(!a.unit) add(a.id,'Hay un periodo sin montacargas.');
-    if(a.desde!=null && a.hasta!=null && a.hasta<a.desde) add(a.id, a.unit+': la fecha "hasta" es antes de "desde".');
-    if(a.estado==='Operando' && !a.m && !a.t && !a.n) add(a.id, a.unit+' está "Operando" pero sin turnos marcados.');
-    S.plan.forEach(function(b,j){ if(j>i && a.unit && a.unit===b.unit && cross(a,b)) add(b.id, a.unit+' tiene dos periodos que se cruzan ('+rng(a)+' y '+rng(b)+'). Cuenta el que empieza más tarde.'); });
-    if(IX && a.unit && !IX.units[a.unit]) add(a.id, a.unit+' no aparece en los checklists cargados (revisa que se escriba igual que la columna Movil).');
-    ['m','t','n'].forEach(function(k){ var o=a['op_'+k];
-      if(a[k] && a.estado==='Operando' && !o) add(a.id, a.unit+' no tiene operador asignado en '+SHN[k.toUpperCase()]+'.');
-      if(a[k] && o && S.recs.length && !ops[norm(o)]) add(a.id, opName(o)+' no aparece como Chofer en los checklists cargados (revisa que se escriba igual que en VecFleet).');
-      S.plan.forEach(function(b,j){ if(j>i && b.unit!==a.unit && a.estado==='Operando' && b.estado==='Operando' && a[k] && b[k] && o && norm(o)===norm(b['op_'+k]||'') && cross(a,b))
-        add(b.id, opName(o)+' está asignado en '+SHN[k.toUpperCase()]+' a '+a.unit+' y a '+b.unit+' al mismo tiempo.'); }); });
+function weekLabel(w){ return fDate(w).replace(/^Lun /,'')+' – '+fDate(w+6).replace(/^Dom /,''); }
+function knownOps(){ var o={}; S.recs.forEach(function(r){ o[r.key]=r.op; }); S.roster.forEach(function(r){ var k=norm(r.op); if(!o[k]) o[k]=r.op; });
+  return Object.keys(o).map(function(k){ return o[k]; }).sort(function(a,b){ return opName(a).localeCompare(opName(b)); }); }
+// Operadores con checklists en los últimos 30 días de datos.
+function activeOps(){ if(!IX) return []; var o={}; S.recs.forEach(function(r){ if(r.dn>IX.lastDn-30) o[r.key]=r.op; }); return Object.keys(o).map(function(k){ return o[k]; }); }
+function rosterWarns(rows){
+  var W=[], seen={}; S.recs.forEach(function(r){ seen[r.key]=1; });
+  rows.forEach(function(r){
+    if(S.recs.length && !seen[norm(r.op)]) W.push(opName(r.op)+' no aparece como Chofer en los checklists cargados: revisa que se escriba igual que en VecFleet.');
+    if(!/[MTN]/.test(r.dias)) W.push(opName(r.op)+' no tiene ningún turno esta semana.');
   });
   return W;
 }
-function planStats(){
-  var td=todayDn(), on=S.plan.filter(function(r){ return overlaps(r,td,td) && r.estado==='Operando'; }), u={}, d=0;
-  on.forEach(function(r){ u[r.unit]=1; d+=(r.m?1:0)+(r.t?1:0)+(r.n?1:0); });
-  var by={}; S.plan.forEach(function(r){ if(overlaps(r,td,td)) by[r.estado]=(by[r.estado]||0)+1; });
-  return '<span><b>'+Object.keys(u).length+'</b> montacargas operando hoy</span><span><b>'+d+'</b> checklists esperados por día ('+S.cfg.days.map(function(v,i){ return v?DIA[i]:null; }).filter(Boolean).join(', ')+')</span>'+
-    ESTADOS.slice(1).filter(function(e){ return by[e]; }).map(function(e){ return '<span><b>'+by[e]+'</b> '+e.toLowerCase()+'</span>'; }).join('')+
-    (DB.updated?'<span>Último cambio en la base: '+esc(new Date(DB.updated).toLocaleString('es-DO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}))+'</span>':'');
+// Resultado de un turno planificado: ok, otro turno, no llenó, o todavía no pasa.
+function cellResult(r,i){
+  var c=r.dias.charAt(i); if(!/[MTN]/.test(c) || !IX) return null;
+  var dn=r.semana+i; if(dn>IX.lastDn || (dn===IX.lastDn && SHI[c]>IX.lastT)) return 'fut';
+  var mine=(IX.covOp[dn]||{})[norm(r.op)]||{};
+  return mine[c] ? 'ok' : SH.some(function(x){ return mine[x]; }) ? 'alt' : 'miss';
 }
-function warnsHtml(W){ return W.length ? '<ul class="warns">'+W.map(function(w){ return '<li>'+esc(w[1])+'</li>'; }).join('')+'</ul>' : '<p class="sub">Sin avisos: el plan no tiene cruces ni datos faltantes.</p>'; }
 function renderPlan(){
-  var td=todayDn(), W=planWarns(), bad={}; W.forEach(function(w){ bad[w[0]]=1; });
-  // Primero los que operan hoy, luego el resto; dentro de cada montacargas, el periodo más reciente arriba.
-  var rank=function(r){ var c=rowAt(r.unit,td); return c?ESTADOS.indexOf(c.estado):9; };
-  var rows=S.plan.slice().sort(function(a,b){ return rank(a)-rank(b) || a.unit.localeCompare(b.unit) || (b.desde==null?-1e9:b.desde)-(a.desde==null?-1e9:a.desde); });
-  var shown=S.showOld?rows:rows.filter(function(r){ return r.hasta==null||r.hasta>=td; }), hid=rows.length-shown.length;
-  var h='<section class="card editor"><div class="sechead"><div><h2>Plan de montacargas</h2><p class="sub">Qué montacargas trabaja, en qué turnos y con qué operador. Lo que cambies aquí se guarda solo en la base de datos y lo ven todos. Para cambiar algo desde una fecha usa "Cambiar desde…": cierra el periodo actual y abre uno nuevo, así los meses anteriores se siguen midiendo con el plan que tenían.</p></div>'+
-    '<div class="tools"><button type="button" class="btn pri" data-pact="add">Agregar montacargas</button><button type="button" data-pact="xlsx">Descargar Excel</button><label class="btn" for="fileIn" tabindex="0">Cargar Excel del plan</label></div></div>';
-  h+='<div class="stats" id="planStats">'+planStats()+'</div>';
-  h+='<datalist id="dlUnits">'+knownUnits().map(function(u){ return '<option value="'+esc(u)+'">'; }).join('')+'</datalist><datalist id="dlOps">'+knownOps().map(function(o){ return '<option value="'+esc(o)+'">'+esc(opName(o))+'</option>'; }).join('')+'</datalist>';
-  if(!rows.length) h+='<div class="drop" style="padding:22px"><h2>Todavía no hay plan</h2><p class="sub">Agrega los montacargas uno por uno o carga el Excel "Plan montacargas". Mientras no haya plan, la adherencia se deduce de los checklists.</p></div>';
-  else h+='<div class="scroll"><table class="plan"><thead><tr><th>Montacargas</th><th>Estado</th><th>Desde</th><th>Hasta<small>vacío = sin fin</small></th>'+SH.map(function(t){ return '<th>'+SHN[t]+'<small>opera · operador</small></th>'; }).join('')+'<th class="c">Dom</th><th>Notas</th><th></th></tr></thead><tbody>'+
-    shown.map(function(r){ return planTr(r,td,bad); }).join('')+'</tbody></table></div>';
-  if(hid||S.showOld) h+='<div><button type="button" class="quiet" data-pact="old">'+(S.showOld?'Ocultar periodos cerrados':'Ver '+plural(hid,'periodo cerrado','periodos cerrados'))+'</button></div>';
-  h+='<div><span class="lbl">Avisos</span><div id="planWarns" style="margin-top:6px">'+warnsHtml(W)+'</div></div></section>';
-  // Excepciones
-  var ex=S.exc.slice().sort(function(a,b){ return b.desde-a.desde; });
-  h+='<section class="card editor"><div class="sechead"><div><h2>Excepciones</h2><p class="sub">Fechas puntuales: un montacargas en taller unos días o un feriado (sin operación), un domingo trabajado (operación extra) o un operador que cubre a otro (cambio de operador).</p></div>'+
-    '<div class="tools"><button type="button" data-pact="addExc">Agregar excepción</button></div></div>';
-  h+=ex.length ? '<div class="scroll"><table class="plan" style="min-width:980px"><thead><tr><th>Desde</th><th>Hasta</th><th>Montacargas</th><th>Turno</th><th>Tipo</th><th>Operador<small>solo cambio de operador</small></th><th>Motivo</th><th></th></tr></thead><tbody>'+
-    ex.map(function(e){ return '<tr data-eid="'+e.id+'"><td><input type="date" data-f="desde" value="'+isoOf(e.desde)+'"></td><td><input type="date" data-f="hasta" value="'+isoOf(e.hasta)+'"></td>'+
-      '<td><select data-f="unit"><option value="">Todos</option>'+knownUnits().map(function(u){ return '<option'+(u===e.unit?' selected':'')+'>'+esc(u)+'</option>'; }).join('')+'</select></td>'+
-      '<td><select data-f="turno"><option value="">Todos</option>'+SH.map(function(t){ return '<option value="'+t+'"'+(t===e.turno?' selected':'')+'>'+SHN[t]+'</option>'; }).join('')+'</select></td>'+
-      '<td><select data-f="tipo">'+Object.keys(TIPO).map(function(k){ return '<option value="'+k+'"'+(k===e.tipo?' selected':'')+'>'+TIPO[k]+'</option>'; }).join('')+'</select></td>'+
-      '<td><input type="text" data-f="op" list="dlOps" value="'+esc(e.op)+'"'+(e.tipo==='operador'?'':' disabled')+'></td><td><input type="text" data-f="motivo" value="'+esc(e.motivo)+'"></td>'+
-      '<td><button type="button" class="rm" data-pact="delExc" aria-label="Borrar excepción">×</button></td></tr>'; }).join('')+'</tbody></table></div>'
-    : '<p class="sub">Sin excepciones.</p>';
+  var td=todayDn(), w=S.wk!=null?S.wk:weekOf(td); S.wk=w;
+  var rows=S.roster.filter(function(r){ return r.semana===w; }).sort(function(a,b){ return opName(a.op).localeCompare(opName(b.op)); });
+  var wk={}; S.roster.forEach(function(r){ wk[r.semana]=1; }); [w, weekOf(td), weekOf(td)+7].forEach(function(x){ wk[x]=1; });
+  var weeks=Object.keys(wk).map(Number).sort(function(a,b){ return b-a; });
+  var cnt={M:0,T:0,N:0}; rows.forEach(function(r){ r.dias.split('').forEach(function(c){ if(cnt[c]!=null) cnt[c]++; }); });
+  var h='<section class="card editor"><div class="sechead"><div><h2>Planificación semanal</h2><p class="sub">El turno de cada operador cada día. Con esto se mide quién no llenó su checklist. Lo que cambies aquí se guarda solo en la base de datos y lo ven todos.</p></div>'+
+    '<div class="tools"><button type="button" data-pact="xlsx">Descargar Excel</button><label class="btn" for="fileIn" tabindex="0">Cargar Excel de planificación</label></div></div>';
+  h+='<div class="tools"><button type="button" data-pact="prevW" aria-label="Semana anterior">◀</button><label class="vh" for="wkSel">Semana</label><select id="wkSel">'+
+    weeks.map(function(x){ var n=S.roster.filter(function(r){ return r.semana===x; }).length; return '<option value="'+x+'"'+(x===w?' selected':'')+'>Semana '+esc(weekLabel(x))+(n?' · '+plural(n,'operador','operadores'):' · sin planificar')+(x===weekOf(td)?' (esta semana)':'')+'</option>'; }).join('')+
+    '</select><button type="button" data-pact="nextW" aria-label="Semana siguiente">▶</button><button type="button" data-pact="copyPrev">Copiar la semana anterior</button></div>';
+  h+='<div class="stats"><span><b>'+rows.length+'</b> operadores planificados</span><span><b>'+(cnt.M+cnt.T+cnt.N)+'</b> turnos: '+cnt.M+' Mañana · '+cnt.T+' Tarde · '+cnt.N+' Noche</span>'+
+    (DB.updated?'<span>Último cambio en la base: '+esc(new Date(DB.updated).toLocaleString('es-DO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}))+'</span>':'')+'</div>';
+  h+='<datalist id="dlOps">'+knownOps().map(function(o){ return '<option value="'+esc(o)+'">'+esc(opName(o))+'</option>'; }).join('')+'</datalist>';
+  if(rows.length){
+    h+='<div class="scroll"><table class="plan roster"><thead><tr><th>Operador</th>'+DIA.map(function(d,i){ var p=fromDn(w+i); return '<th class="c">'+d+'<small>'+p.d+' '+MES3[p.m-1]+'</small></th>'; }).join('')+'<th class="r">Turnos</th><th>Notas</th><th></th></tr></thead><tbody>'+
+      rows.map(function(r){ var n=r.dias.replace(/[^MTN]/g,'').length;
+        return '<tr data-rop="'+esc(r.op)+'"><td><strong>'+esc(opName(r.op))+'</strong></td>'+DIA.map(function(d,i){ var c=r.dias.charAt(i);
+          return '<td class="c"><select class="dsel c-'+(c==='-'?'L':c)+'" data-d="'+i+'" aria-label="'+esc(opName(r.op)+' '+DIAS[i])+'">'+CODES.map(function(k){ return '<option value="'+k+'"'+(k===c?' selected':'')+'>'+DCODE[k]+'</option>'; }).join('')+'</select></td>'; }).join('')+
+          '<td class="r">'+n+'</td><td><input type="text" data-f="notas" value="'+esc(r.notas)+'" aria-label="Notas" style="min-width:120px"></td><td><button type="button" class="rm" data-pact="delOp" aria-label="Quitar de la semana">×</button></td></tr>'; }).join('')+
+      '</tbody></table></div>';
+  } else h+='<div class="drop" style="padding:22px"><h2>Semana sin planificar</h2><p class="sub">Agrega los operadores y elige su turno de cada día, copia la semana anterior o carga el Excel de planificación.</p></div>';
+  h+='<div class="tools"><label class="vh" for="addOp">Operador</label><input type="text" id="addOp" list="dlOps" placeholder="Operador (como en VecFleet)" style="min-width:260px"><button type="button" data-pact="addOp">Agregar operador</button>'+
+    '<button type="button" class="quiet" data-pact="addActive">Agregar los operadores activos</button></div>';
+  var W=rosterWarns(rows); if(W.length) h+='<div><span class="lbl">Avisos</span><ul class="warns" style="margin-top:6px">'+W.map(function(x){ return '<li>'+esc(x)+'</li>'; }).join('')+'</ul></div>';
   h+='</section>';
+  // Cumplimiento de la semana
+  if(rows.length && IX && w<=IX.lastDn){
+    var tot={e:0,g:0};
+    h+='<section class="card"><div class="sechead"><div><span class="lbl">Cumplimiento · semana '+esc(weekLabel(w))+'</span><p class="sub">✓ llenó · ✕ no llenó · ~ llenó ese día pero marcó otro turno. Los turnos que aún no pasan quedan en gris.</p></div></div>'+
+      '<div class="scroll" style="margin-top:8px"><table class="cal-r"><thead><tr><th>Operador</th>'+DIA.map(function(d,i){ var p=fromDn(w+i); return '<th class="c">'+d+'<small>'+p.d+'</small></th>'; }).join('')+'<th class="c">Cumplió</th></tr></thead><tbody>'+
+      rows.map(function(r){ var e=0,g=0;
+        var cells=DIA.map(function(d,i){ var c=r.dias.charAt(i), res=cellResult(r,i);
+          if(!res) return '<td class="c"><span class="rs off">'+(c==='-'?'':DCODE[c].charAt(0))+'</span></td>';
+          if(res!=='fut'){ e++; if(res!=='miss') g++; }
+          var cls=res==='ok'?'s-good':res==='alt'?'s-warn':res==='miss'?'s-crit':'fut';
+          return '<td class="c"><span class="rs '+cls+'" data-tip="'+esc(opName(r.op)+'\n'+fDate(r.semana+i)+' · '+DCODE[c]+'\n'+({ok:'Llenó su checklist',alt:'Llenó ese día pero marcó otro turno',miss:'No llenó',fut:'Todavía no pasa'})[res])+'">'+c+' '+({ok:'✓',alt:'~',miss:'✕',fut:'·'})[res]+'</span></td>'; }).join('');
+        tot.e+=e; tot.g+=g;
+        return '<tr><td>'+esc(opName(r.op))+'</td>'+cells+hcell(g,e)+'</tr>'; }).join('')+
+      '<tr class="tot"><td>Total</td><td colspan="7"></td>'+hcell(tot.g,tot.e)+'</tr></tbody></table></div></section>';
+  }
+  h+='<section class="card notes"><span class="lbl">Cómo funciona</span><ul>'+
+    '<li>Cada fila es un operador; en cada día eliges Mañana, Tarde, Noche, Libre, Vacaciones o Permiso. Solo Mañana, Tarde y Noche cuentan como turno a cumplir.</li>'+
+    '<li>Cumple si ese día hay un checklist con su nombre en la columna Chofer de VecFleet, en cualquier montacargas. Por eso el nombre debe escribirse igual que en VecFleet (la lista sugiere los nombres).</li>'+
+    '<li>Para la semana siguiente puedes copiar la anterior y solo cambiar lo distinto, o cargar el Excel de planificación con una o varias semanas.</li></ul></section>';
   document.getElementById('vPlan').innerHTML=h;
 }
-function planTr(r,td,bad){
-  return '<tr data-pid="'+r.id+'" class="'+(r.hasta!=null&&r.hasta<td?'old':'')+(bad[r.id]?' bad':'')+'">'+
-    '<td><input type="text" data-f="unit" list="dlUnits" value="'+esc(r.unit)+'" aria-label="Montacargas" style="min-width:92px"></td>'+
-    '<td><select data-f="estado" aria-label="Estado">'+ESTADOS.map(function(e){ return '<option'+(e===r.estado?' selected':'')+'>'+e+'</option>'; }).join('')+'</select></td>'+
-    '<td><input type="date" data-f="desde" value="'+isoOf(r.desde)+'" aria-label="Desde"></td><td><input type="date" data-f="hasta" value="'+isoOf(r.hasta)+'" aria-label="Hasta"></td>'+
-    ['m','t','n'].map(function(k){ var nm=SHN[k.toUpperCase()]; return '<td class="sh"><label><input type="checkbox" data-f="'+k+'"'+(r[k]?' checked':'')+' aria-label="Opera en '+nm+'"><input type="text" data-f="op_'+k+'" list="dlOps" value="'+esc(r['op_'+k])+'" placeholder="Operador" aria-label="Operador '+nm+'"'+(r[k]?'':' disabled')+'></label></td>'; }).join('')+
-    '<td class="c"><input type="checkbox" data-f="dom"'+(r.dom?' checked':'')+' aria-label="Opera domingos"></td>'+
-    '<td><input type="text" data-f="notas" value="'+esc(r.notas)+'" aria-label="Notas" style="min-width:120px"></td>'+
-    '<td style="white-space:nowrap"><button type="button" class="mini-btn" data-pact="split">Cambiar desde…</button><button type="button" class="rm" data-pact="del" aria-label="Borrar periodo">×</button></td></tr>';
-}
-function refreshPlanSide(){
-  var W=planWarns(), bad={}; W.forEach(function(w){ bad[w[0]]=1; });
-  var w=document.getElementById('planWarns'); if(w) w.innerHTML=warnsHtml(W);
-  var s=document.getElementById('planStats'); if(s) s.innerHTML=planStats();
-  document.querySelectorAll('tr[data-pid]').forEach(function(tr){ tr.classList.toggle('bad',!!bad[tr.dataset.pid]); });
-}
-function askDate(msg,def){
-  var v=prompt(msg+' (dd/mm/aaaa)', fDateY(def)); if(v==null) return null;
-  var d=parseDate(v.trim()); if(!d){ alert('No entendí la fecha. Escríbela como dd/mm/aaaa.'); return null; } return dnOf(d.y,d.m,d.d);
-}
+function setRow(op,f){ var r=S.roster.filter(function(x){ return x.semana===S.wk && x.op===op; })[0]; if(r){ f(r); save(); indexRoster(); saveWeek(S.wk); } return r; }
 function planAction(act,el){
-  var tr=el.closest('tr'), td=todayDn();
-  if(act==='add'){ var p=fromDn(td), r=cleanPlan({id:newId('p'), unit:'', estado:'Operando', desde:dnOf(p.y,p.m,1), hasta:null, m:1,t:1,n:1});
-    S.plan.push(r); save(); renderPlan(); var i=document.querySelector('tr[data-pid="'+r.id+'"] input[data-f="unit"]'); if(i) i.focus(); return; }
-  if(act==='addExc'){ var e=cleanExc({id:newId('e'), desde:td, hasta:td, unit:'', turno:'', tipo:'sin_op'}); S.exc.push(e); save(); saveRow('exc',e.id); renderPlan(); return; }
-  if(act==='old'){ S.showOld=!S.showOld; renderPlan(); return; }
-  if(act==='xlsx'){ planXlsx(); return; }
-  if(act==='del'){ var id=tr.dataset.pid, r0=S.plan.filter(function(x){ return x.id===id; })[0];
-    if(!confirm('¿Borrar el periodo de '+(r0.unit||'este montacargas')+' ('+rng(r0)+')? Si el montacargas dejó de operar, es mejor ponerle fecha "hasta" para no perder la historia.')) return;
-    S.plan=S.plan.filter(function(x){ return x.id!==id; }); save(); if(r0.unit) delRow('plan',id); renderPlan(); return; }
-  if(act==='delExc'){ var eid=tr.dataset.eid; S.exc=S.exc.filter(function(x){ return x.id!==eid; }); save(); delRow('exc',eid); renderPlan(); return; }
-  if(act==='split'){ var sid=tr.dataset.pid, a=S.plan.filter(function(x){ return x.id===sid; })[0]; if(!a.unit){ alert('Primero escribe el montacargas.'); return; }
-    var nx=fromDn(td), def=dnOf(nx.y,nx.m+1,1), d=askDate('¿Desde qué fecha cambia el plan de '+a.unit+'?', def); if(d==null) return;
-    if(a.desde!=null && d<=a.desde){ alert('La fecha debe ser después del inicio de este periodo ('+fDateY(a.desde)+').'); return; }
-    var b=cleanPlan(Object.assign({},a,{id:newId('p'), desde:d})); a.hasta=d-1;
-    S.plan.push(b); save(); saveRow('plan',a.id); saveRow('plan',b.id); renderPlan();
-    show('info','Se cerró el periodo de '+a.unit+' el '+fDateY(d-1)+' y se abrió uno nuevo desde el '+fDateY(d)+'. Cambia ahí lo que corresponda.'); return; }
+  var w=S.wk;
+  if(act==='prevW'||act==='nextW'){ S.wk=w+(act==='prevW'?-7:7); renderPlan(); return; }
+  if(act==='xlsx'){ rosterXlsx(); return; }
+  if(act==='copyPrev'){
+    var prev=S.roster.filter(function(r){ return r.semana===w-7; });
+    if(!prev.length){ alert('La semana anterior no tiene planificación.'); return; }
+    var cur=S.roster.filter(function(r){ return r.semana===w; });
+    if(cur.length && !confirm('Esta semana ya tiene '+plural(cur.length,'operador','operadores')+'. ¿Reemplazarla con la semana anterior?')) return;
+    S.roster=S.roster.filter(function(r){ return r.semana!==w; }).concat(prev.map(function(r){ return cleanRow({semana:w, op:r.op, dias:r.dias, notas:''}); }));
+    save(); indexRoster(); saveWeek(w); render(); return; }
+  if(act==='addOp'||act==='addActive'){
+    var list=act==='addOp' ? [document.getElementById('addOp').value.trim()] : activeOps();
+    var have={}; S.roster.forEach(function(r){ if(r.semana===w) have[norm(r.op)]=1; });
+    var add=list.filter(function(o){ return o && !have[norm(o)] && (have[norm(o)]=1); });
+    if(!add.length){ if(act==='addOp') document.getElementById('addOp').focus(); return; }
+    // Si el nombre coincide con uno de VecFleet, se usa tal cual aparece allí.
+    var known={}; knownOps().forEach(function(o){ known[norm(o)]=o; });
+    add.forEach(function(o){ S.roster.push(cleanRow({semana:w, op:known[norm(o)]||o, dias:'-------'})); });
+    save(); indexRoster(); saveWeek(w); render(); return; }
+  if(act==='delOp'){ var op=el.closest('tr').dataset.rop; if(!confirm('¿Quitar a '+opName(op)+' de esta semana?')) return;
+    S.roster=S.roster.filter(function(r){ return !(r.semana===w && r.op===op); }); save(); indexRoster(); saveWeek(w); render(); return; }
 }
 function planEdit(t){
-  var tr=t.closest('tr'), f=t.dataset.f, v=t.type==='checkbox'?(t.checked?1:0):t.value;
-  if(tr.dataset.pid){
-    var r=S.plan.filter(function(x){ return x.id===tr.dataset.pid; })[0]; if(!r) return;
-    if(f==='desde'||f==='hasta') v=dnIso(v); else if(typeof v==='string') v=v.trim();
-    r[f]=v; if(/^[mtn]$/.test(f)){ var o=tr.querySelector('[data-f="op_'+f+'"]'); if(o) o.disabled=!v; }
-    save(); if(r.unit) saveRow('plan',r.id);
-  } else if(tr.dataset.eid){
-    var e=S.exc.filter(function(x){ return x.id===tr.dataset.eid; })[0]; if(!e) return;
-    if(f==='desde'||f==='hasta'){ v=dnIso(v); if(v==null) return; } else if(typeof v==='string') v=v.trim();
-    e[f]=v; if(f==='desde' && e.hasta<e.desde){ e.hasta=e.desde; tr.querySelector('[data-f="hasta"]').value=isoOf(e.desde); }
-    if(f==='tipo'){ var oi=tr.querySelector('[data-f="op"]'); oi.disabled=v!=='operador'; }
-    save(); saveRow('exc',e.id);
-  }
-  refreshPlanSide();
+  if(t.id==='wkSel'){ S.wk=+t.value; renderPlan(); return; }
+  var tr=t.closest('tr[data-rop]'); if(!tr) return;
+  if(t.dataset.d!=null){ var i=+t.dataset.d, v=t.value; setRow(tr.dataset.rop,function(r){ r.dias=r.dias.slice(0,i)+v+r.dias.slice(i+1); }); render(); }
+  else if(t.dataset.f==='notas'){ setRow(tr.dataset.rop,function(r){ r.notas=t.value.trim(); }); }
 }
 
-/* ---------- Excel del plan ---------- */
-function planXlsx(){
+/* ---------- Excel de planificación ---------- */
+function rosterXlsx(){
   // Fechas como número de serie de Excel (no como Date) para que la zona horaria no las corra un día.
-  var wb=XLSX.utils.book_new(), yn=function(v){ return v?'Sí':'No'; }, dd=function(dn){ return dn==null ? '' : dn+25569; };
-  var rows=S.plan.slice().sort(function(a,b){ return a.unit.localeCompare(b.unit) || (a.desde||0)-(b.desde||0); });
-  var P=[PLAN_H].concat(rows.map(function(r){ return [r.unit,r.estado,dd(r.desde),dd(r.hasta),yn(r.m),r.op_m,yn(r.t),r.op_t,yn(r.n),r.op_n,yn(r.dom),r.notas,r.id]; }));
-  var E=[EXC_H].concat(S.exc.map(function(e){ return [dd(e.desde),dd(e.hasta),e.unit||'Todos',e.turno?SHN[e.turno]:'Todos',TIPO[e.tipo],e.op,e.motivo,e.id]; }));
-  var us=knownUnits(), os=knownOps(), n=Math.max(us.length,os.length,ESTADOS.length,3), L=[['Montacargas conocidos','Operadores (como en VecFleet)','Estados','Tipos de excepción','Turnos']];
-  for(var i=0;i<n;i++) L.push([us[i]||'',os[i]||'',ESTADOS[i]||'',[TIPO.sin_op,TIPO.extra,TIPO.operador][i]||'',['Todos','Mañana','Tarde','Noche'][i]||'']);
-  var I=[['Plan de montacargas · '+(S.base||'CD')],[''],
-    ['Hoja Plan: una fila por montacargas y periodo. Mañana / Tarde / Noche: Sí si opera en ese turno, y su operador asignado.'],
-    ['Estado: Operando, En taller, Reserva o Baja. Solo "Operando" cuenta para la adherencia.'],
-    ['Desde / Hasta: fechas del periodo (dd/mm/aaaa). Hasta vacío = sigue vigente. Para un cambio desde una fecha, cierra la fila (Hasta) y agrega otra (Desde).'],
-    ['Domingos: Sí si ese montacargas también opera los domingos.'],
-    ['Operadores: escríbelos igual que en la columna Chofer de VecFleet (ver hoja Listas).'],
-    ['Hoja Excepciones: Tipo = Sin operación, Operación extra o Cambio de operador. Montacargas o Turno "Todos" aplica a todos.'],
-    ['ID: no lo cambies; sirve para actualizar la misma fila en la base. Déjalo vacío en filas nuevas.'],
-    ['Para guardar: en el dashboard, pestaña Plan → "Cargar Excel del plan". Reemplaza el plan de la base completo.']];
+  var wb=XLSX.utils.book_new(), rows=S.roster.slice().sort(function(a,b){ return a.semana-b.semana || opName(a.op).localeCompare(opName(b.op)); });
+  if(!rows.length) rows=activeOps().sort(function(a,b){ return opName(a).localeCompare(opName(b)); }).map(function(o){ return {semana:S.wk||weekOf(todayDn()), op:o, dias:'-------', notas:''}; });
+  var P=[ROSTER_H].concat(rows.map(function(r){ return [r.semana+25569, r.op].concat(r.dias.split('').map(function(c){ return c==='-'?'Libre':DCODE[c]; })).concat([r.notas||'']); }));
+  var os=knownOps(), L=[['Operadores (como en VecFleet)','Turnos']], codes=['Mañana','Tarde','Noche','Libre','Vacaciones','Permiso'];
+  for(var i=0;i<Math.max(os.length,codes.length);i++) L.push([os[i]||'', codes[i]||'']);
+  var I=[['Planificación semanal de operadores de montacargas'],[''],
+    ['Una fila por operador y semana. Semana = fecha del lunes (dd/mm/aaaa); si pones otro día se toma el lunes de esa semana.'],
+    ['En cada día escribe Mañana, Tarde, Noche, Libre, Vacaciones o Permiso. Vacío = Libre. Solo Mañana, Tarde y Noche cuentan como turno a cumplir.'],
+    ['Operador: igual que en la columna Chofer de VecFleet (hoja Listas).'],
+    ['Puedes poner varias semanas en la misma hoja. Al cargar el Excel solo se reemplazan las semanas que vienen en el archivo.'],
+    ['Para guardar: dashboard → pestaña Planificación → "Cargar Excel de planificación".']];
   function sheet(a,w,dates){ var ws=XLSX.utils.aoa_to_sheet(a); ws['!cols']=w.map(function(x){ return {wch:x}; });
     (dates||[]).forEach(function(c){ for(var i=1;i<a.length;i++){ var cell=ws[XLSX.utils.encode_cell({r:i,c:c})]; if(cell && cell.t==='n') cell.z='dd/mm/yyyy'; } }); return ws; }
-  XLSX.utils.book_append_sheet(wb, sheet(P,[13,11,12,12,8,30,8,30,8,30,10,30,16],[2,3]), 'Plan');
-  XLSX.utils.book_append_sheet(wb, sheet(E,[12,12,13,10,20,30,34,16],[0,1]), 'Excepciones');
-  XLSX.utils.book_append_sheet(wb, sheet(L,[22,32,12,22,10]), 'Listas');
+  XLSX.utils.book_append_sheet(wb, sheet(P,[15,32,11,11,11,11,11,11,11,30],[0]), 'Planificación');
+  XLSX.utils.book_append_sheet(wb, sheet(L,[34,12]), 'Listas');
   XLSX.utils.book_append_sheet(wb, sheet(I,[120]), 'Instrucciones');
-  XLSX.writeFile(wb, 'Plan montacargas '+isoOf(todayDn())+'.xlsx');
+  XLSX.writeFile(wb, 'Planificación operadores '+(S.wk!=null?isoOf(S.wk):isoOf(todayDn()))+'.xlsx');
 }
-function readPlanBook(wb){
-  var P=null, E=[];
-  function yes(v){ return /^(SI|S|X|1|TRUE|VERDADERO)$/.test(norm(v))?1:0; }
-  function dnv(v){ var d=parseDate(v); return d?dnOf(d.y,d.m,d.d):null; }
-  function idv(v){ var s=String(v==null?'':v).trim(); return /^[\w-]{1,64}$/.test(s)?s:''; }
-  function sv(v){ return String(v==null?'':v).trim(); }
+function isoOf(dn){ var p=fromDn(dn); return p.y+'-'+String(p.m).padStart(2,'0')+'-'+String(p.d).padStart(2,'0'); }
+function codeOf(v){
+  var s=norm(v); if(!s || s==='-' ) return '-';
+  if(/^(LIBRE|L|D|DESCANSO|OFF|X)$/.test(s) || s.indexOf('LIBRE')===0 || s.indexOf('DESCANSO')===0) return '-';
+  if(s.indexOf('MA')===0 || s==='M' || s==='1') return 'M';
+  if(s.indexOf('TA')===0 || s==='T' || s==='2') return 'T';
+  if(s.indexOf('NO')===0 || s==='N' || s==='3') return 'N';
+  if(s.indexOf('VAC')===0 || s==='V') return 'V';
+  if(s.indexOf('PER')===0 || s.indexOf('LIC')===0 || s==='P') return 'P';
+  return null;
+}
+// Lee el Excel de planificación: una hoja con Semana, Operador y las columnas de los 7 días.
+function readRosterBook(wb){
+  var out=null, bad=[];
   wb.SheetNames.forEach(function(sn){
     var rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:true,defval:null}), hi=-1;
-    for(var i=0;i<Math.min(rows.length,10);i++){ var n=(rows[i]||[]).map(norm); if(n.indexOf('MONTACARGAS')>=0 && (n.indexOf('ESTADO')>=0 || n.indexOf('TIPO')>=0)){ hi=i; break; } }
+    for(var i=0;i<Math.min(rows.length,10);i++){ var n=(rows[i]||[]).map(norm); if(n.some(function(x){ return x.indexOf('OPERADOR')===0; }) && n.some(function(x){ return x.indexOf('LUN')===0; })){ hi=i; break; } }
     if(hi<0) return;
-    var H=rows[hi].map(norm), isPlan=H.indexOf('ESTADO')>=0;
+    var H=rows[hi].map(norm), col=function(f){ for(var j=0;j<H.length;j++) if(f(H[j])) return j; return -1; };
+    var cs=col(function(h){ return h.indexOf('SEMANA')===0 || h==='FECHA'; }), co=col(function(h){ return h.indexOf('OPERADOR')===0; }), cn=col(function(h){ return h.indexOf('NOTA')===0; });
+    var cd=['LUN','MAR','MIE','JUE','VIE','SAB','DOM'].map(function(d){ return col(function(h){ return h.indexOf(d)===0; }); });
+    if(co<0 || cd.some(function(j){ return j<0; })) return;
+    out=out||[];
     for(var k=hi+1;k<rows.length;k++){
       var r=rows[k]; if(!r || r.every(function(v){ return v==null||String(v).trim()===''; })) continue;
       if(r.some(function(v){ return /^EJEMPLO/.test(norm(v)); })) continue;
-      var g=function(name){ var j=H.indexOf(name); return j<0?null:r[j]; };
-      if(isPlan){
-        var unit=sv(g('MONTACARGAS')); if(!unit) continue; P=P||[];
-        var es=ESTADOS.filter(function(e){ return norm(e)===norm(g('ESTADO')); })[0]||'Operando';
-        P.push(cleanPlan({id:idv(g('ID'))||newId('p'), unit:unit, estado:es, desde:dnv(g('DESDE')), hasta:dnv(g('HASTA')),
-          m:yes(g('MANANA')), op_m:sv(g('OPERADOR MANANA')), t:yes(g('TARDE')), op_t:sv(g('OPERADOR TARDE')), n:yes(g('NOCHE')), op_n:sv(g('OPERADOR NOCHE')),
-          dom:yes(g('DOMINGOS')), notas:sv(g('NOTAS'))}));
-      } else {
-        var d=dnv(g('DESDE')), tp=norm(g('TIPO')), tipo=tp.indexOf('SIN')>=0?'sin_op':tp.indexOf('EXTRA')>=0?'extra':(tp.indexOf('OPERADOR')>=0||tp.indexOf('CAMBIO')>=0)?'operador':null;
-        if(d==null||!tipo) continue;
-        var u=sv(g('MONTACARGAS')), h2=dnv(g('HASTA'));
-        E.push(cleanExc({id:idv(g('ID'))||newId('e'), desde:d, hasta:h2==null||h2<d?d:h2, unit:norm(u)==='TODOS'?'':u, turno:shiftOf(g('TURNO'))||'', tipo:tipo, op:sv(g('OPERADOR')), motivo:sv(g('MOTIVO'))}));
-      }
+      var op=String(r[co]==null?'':r[co]).trim(); if(!op) continue;
+      var d=cs>=0?parseDate(r[cs]):null; if(!d){ bad.push(op+' (sin fecha de semana)'); continue; }
+      var dias=cd.map(function(j){ var c=codeOf(r[j]); if(c==null){ bad.push(op+': "'+r[j]+'"'); return '-'; } return c; }).join('');
+      out.push(cleanRow({semana:weekOf(dnOf(d.y,d.m,d.d)), op:op, dias:dias, notas:cn>=0?String(r[cn]||'').trim():''}));
     }
   });
-  return P?{plan:P, exc:E}:null;
+  return out ? {rows:out, bad:bad} : null;
 }
-function importPlan(pl,name){
-  if(!confirm('Cargar el plan de "'+name+'": '+plural(pl.plan.length,'periodo','periodos')+' y '+plural(pl.exc.length,'excepción','excepciones')+'.\nReemplaza todo el plan actual de la base (queda copia en el historial). ¿Continuar?')) return;
-  S.plan=pl.plan; S.exc=pl.exc; S.view='plan'; save(); render();
-  pushAll().then(function(d){ show('info','Plan guardado en la base: '+plural(d.plan,'periodo','periodos')+' y '+plural(d.exc,'excepción','excepciones')+'.'); renderPlan(); })
-    .catch(function(){ show('msg','El plan se cargó en este navegador pero no se guardó en la base. Toca el aviso de la base de datos (arriba a la derecha) para escribir la clave y reintentar.'); });
+function importRoster(R,name){
+  var ws={}; R.rows.forEach(function(r){ ws[r.semana]=1; }); var list=Object.keys(ws).map(Number).sort(function(a,b){ return a-b; });
+  if(!list.length){ show('msg','El archivo "'+name+'" no tiene filas de planificación.'); return; }
+  if(!confirm('Cargar la planificación de "'+name+'":\n'+list.map(function(w){ return '· Semana '+weekLabel(w)+': '+plural(R.rows.filter(function(r){ return r.semana===w; }).length,'operador','operadores'); }).join('\n')+
+    (R.bad.length?'\n\nNo se entendieron '+R.bad.length+' celdas (quedan como Libre): '+R.bad.slice(0,5).join('; '):'')+'\n\nReemplaza esas semanas en la base. ¿Continuar?')) return;
+  // Dentro del archivo, si un operador se repite en la misma semana, cuenta la última fila.
+  var seen={}, rows=R.rows.slice().reverse().filter(function(r){ var k=r.semana+'|'+norm(r.op); return !seen[k] && (seen[k]=1); }).reverse();
+  S.roster=S.roster.filter(function(r){ return !ws[r.semana]; }).concat(rows); indexRoster();
+  S.view='plan'; S.wk=list[list.length-1]; save(); render();
+  pushWeeks(list).then(function(d){ DB.dirty=false; show('info','Planificación guardada en la base: '+plural(d.weeks,'semana','semanas')+', '+plural(d.rows,'fila','filas')+'.'); renderPlan(); })
+    .catch(function(){ show('msg','La planificación se cargó en este navegador pero no se guardó en la base. Toca el aviso de la base de datos (arriba a la derecha) para escribir la clave y reintentar.'); });
 }
 
 /* ---------- Eventos ---------- */
@@ -1048,13 +1085,14 @@ document.addEventListener('click',function(e){
   if((b=e.target.closest('th[data-sort]'))){ var s=b.dataset.sort; S.opSort=S.opSort[0]===s?[s,-S.opSort[1]]:[s,s==='name'?1:-1]; renderOps(); return; }
   if(e.target.id==='resetCfg'){ var tz=S.cfg.tz; S.cfg=defCfg(); if(S.cfg.tz!==tz && S.recs.length){ S.recs.forEach(mkRec); index(); } save(); syncCfg(); render(); return; }
   if((b=e.target.closest('[data-pact]'))){ planAction(b.dataset.pact,b); return; }
+  if((b=e.target.closest('tr[data-week]'))){ S.view='plan'; S.wk=+b.dataset.week; save(); render(); window.scrollTo(0,0); return; }
 });
 document.getElementById('syncBtn').addEventListener('click',function(){
   var k=prompt('Clave de edición para guardar en la base (déjala vacía para olvidarla en este navegador):', ''); if(k===null) return;
   setClave(k.trim()); DB.noKey=false; setSync('ok', k.trim()?'Clave guardada en este navegador':'Clave olvidada');
   if(DB.dirty && getClave()) pushAll().then(function(){ return write('PUT','/api/config/ajustes',cfgNow()); }).then(pullRemote).catch(function(){}); else pullRemote();
 });
-document.addEventListener('keydown',function(e){ var r=e.target.closest&&e.target.closest('tr[data-month]'); if(r&&(e.key==='Enter'||e.key===' ')){ e.preventDefault(); r.click(); } });
+document.addEventListener('keydown',function(e){ var r=e.target.closest&&e.target.closest('tr[data-month],tr[data-week]'); if(r&&(e.key==='Enter'||e.key===' ')){ e.preventDefault(); r.click(); } });
 document.addEventListener('input',function(e){
   var t=e.target, pos;
   if(t.id==='opQ'){ S.q=t.value; pos=t.selectionStart; renderOps(); var n=document.getElementById('opQ'); n.focus(); n.setSelectionRange(pos,pos); }
@@ -1062,7 +1100,7 @@ document.addEventListener('input',function(e){
 });
 document.addEventListener('change',function(e){
   var t=e.target, d=t.dataset;
-  if(t.closest('#vPlan') && d.f){ planEdit(t); return; }
+  if(t.closest('#vPlan') && (d.f || d.d!=null || t.id==='wkSel')){ planEdit(t); return; }
   if(!t.closest('#editor')) return;
   if(d.cfg){ var v=parseFloat(t.value); if(!isFinite(v)) return; if(d.cfg==='meta') v=Math.max(1,Math.min(100,Math.round(v))); if(d.cfg==='minDays') v=Math.max(1,Math.round(v)); if(d.cfg==='tol') v=Math.max(0.5,Math.min(8,v)); if(d.cfg==='tz') v=Math.max(-12,Math.min(12,Math.round(v)));
     S.cfg[d.cfg]=v; if(d.cfg==='tz'){ S.recs.forEach(mkRec); index(); } }
@@ -1077,7 +1115,7 @@ document.addEventListener('mousemove',function(e){ var el=e.target.closest&&e.ta
 document.addEventListener('focusin',function(e){ var el=e.target.closest&&e.target.closest('[data-tip]'); if(el){ var r=el.getBoundingClientRect(); showTip(el,r.left,r.top); } else tip.hidden=true; });
 document.addEventListener('scroll',function(){ tip.hidden=true; },true);
 
-load(); if(S.recs.length) index(); render(); pullRemote();
+load(); indexRoster(); if(S.recs.length) index(); render(); pullRemote();
 </script>
 </body>
 </html>
