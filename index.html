@@ -283,7 +283,7 @@ var DIA=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'], DIAS=['lunes','martes','m
 var SH=['M','T','N'], SHN={M:'Mañana',T:'Tarde',N:'Noche'}, SHI={M:0,T:1,N:2};
 var TIMING={ini:'Al inicio del turno',tarde:'Después del inicio',fuera:'Fuera del horario del turno'};
 
-function defCfg(){ return {meta:95, days:[1,1,1,1,1,1,0], start:{M:'06:00',T:'14:00',N:'22:00'}, tol:2, minDays:5, tz:0, units:{}, cfgv:3}; }
+function defCfg(){ return {meta:95, days:[1,1,1,1,1,1,0], start:{M:'06:00',T:'14:00',N:'22:00'}, tol:2, minDays:5, tz:2, units:{}, cfgv:4}; }
 var S={recs:[], items:[], cfg:defCfg(), month:null, shift:'all', view:'adh', fileName:'', base:'', sel:null, opSort:['n',-1], opOpen:{}, q:'', rq:''};
 
 /* ---------- Utilidades ---------- */
@@ -320,6 +320,8 @@ function load(){
     S.cfg=Object.assign(defCfg(), o.cfg||{}); S.cfg.start=Object.assign(defCfg().start, S.cfg.start||{});
     // v3: turnos de 8 h desde las 06:00 (06–14, 14–22, 22–06); se corrigen los horarios anteriores guardados en el navegador.
     if(!(o.cfg&&o.cfg.cfgv>=3)){ S.cfg.start=defCfg().start; S.cfg.cfgv=3; }
+    // v4: el export de VecFleet viene 2 h atrás de la hora del CD.
+    if(S.cfg.cfgv<4){ if(!S.cfg.tz) S.cfg.tz=2; S.cfg.cfgv=4; }
     S.month=o.month||null; S.shift=o.shift||'all'; S.view=o.view||'adh'; S.fileName=o.fileName||''; S.base=o.base||''; S.items=o.items||[];
     S.recs=(o.recs||[]).map(function(a){ return mkRec({id:a[0],y:a[1],m:a[2],d:a[3],min:a[4],t:a[5],unit:a[6],op:a[7],by:a[8],pend:!!a[9],fails:a[10],bad:a[11]||[],com:a[12]||'',link:a[13]||''}); });
   }catch(_){ S.recs=[]; }
@@ -497,6 +499,7 @@ function renderAdh(){
     '<li>Un montacargas está en operación en el mes si tiene checklists en al menos '+S.cfg.minDays+' días de ese mes; puedes fijarlo o excluirlo en "Plan y reglas".</li>'+
     '<li>El turno se toma de la columna TURNO. Un checklist de Noche hecho antes de las 8:00 cuenta para la noche del día anterior.</li>'+
     '<li>"Al inicio del turno" = llenado hasta '+S.cfg.tol+' h después del inicio ('+SH.map(function(t){ return SHN[t]+' '+S.cfg.start[t]; }).join(', ')+') o hasta 1 h antes.</li>'+
+    (S.cfg.tz?'<li>A la hora del Excel se le suman '+S.cfg.tz+' h para llevarla a la hora del CD (el export de VecFleet viene atrasado).</li>':'')+
     '<li>El último día cargado solo cuenta hasta el último turno con registros.</li></ul></section>';
   document.getElementById('vAdh').innerHTML=h;
 }
