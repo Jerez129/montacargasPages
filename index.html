@@ -283,7 +283,7 @@ var DIA=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'], DIAS=['lunes','martes','m
 var SH=['M','T','N'], SHN={M:'Mañana',T:'Tarde',N:'Noche'}, SHI={M:0,T:1,N:2};
 var TIMING={ini:'Al inicio del turno',tarde:'Después del inicio',fuera:'Fuera del horario del turno'};
 
-function defCfg(){ return {meta:95, days:[1,1,1,1,1,1,0], start:{M:'04:00',T:'12:00',N:'20:00'}, tol:2, minDays:5, units:{}}; }
+function defCfg(){ return {meta:95, days:[1,1,1,1,1,1,0], start:{M:'06:00',T:'12:00',N:'20:00'}, tol:2, minDays:5, units:{}, cfgv:2}; }
 var S={recs:[], items:[], cfg:defCfg(), month:null, shift:'all', view:'adh', fileName:'', base:'', sel:null, opSort:['n',-1], opOpen:{}, q:'', rq:''};
 
 /* ---------- Utilidades ---------- */
@@ -318,6 +318,8 @@ function load(){
   try{
     var o=JSON.parse(localStorage.getItem(KEY)||'null'); if(!o) return;
     S.cfg=Object.assign(defCfg(), o.cfg||{}); S.cfg.start=Object.assign(defCfg().start, S.cfg.start||{});
+    // v2: la Mañana empieza a las 06:00; se corrige el valor anterior guardado en el navegador.
+    if(!(o.cfg&&o.cfg.cfgv>=2)){ if(S.cfg.start.M==='04:00') S.cfg.start.M='06:00'; S.cfg.cfgv=2; }
     S.month=o.month||null; S.shift=o.shift||'all'; S.view=o.view||'adh'; S.fileName=o.fileName||''; S.base=o.base||''; S.items=o.items||[];
     S.recs=(o.recs||[]).map(function(a){ return mkRec({id:a[0],y:a[1],m:a[2],d:a[3],min:a[4],t:a[5],unit:a[6],op:a[7],by:a[8],pend:!!a[9],fails:a[10],bad:a[11]||[],com:a[12]||'',link:a[13]||''}); });
   }catch(_){ S.recs=[]; }
@@ -422,8 +424,8 @@ function index(){
   if(!S.month || (S.month!=='all' && !months[S.month])) S.month=IX.months[IX.months.length-1]||null;
 }
 function timing(r){
-  var s=toMin(S.cfg.start[r.t]), off=((r.min-s)%1440+1440)%1440; if(off>1440-60) off-=1440;
-  return off<=S.cfg.tol*60 ? 'ini' : off<=8*60 ? 'tarde' : 'fuera';
+  var s=toMin(S.cfg.start[r.t]), off=((r.min-s)%1440+1440)%1440; if(off>720) off-=1440;
+  return off>=-60&&off<=S.cfg.tol*60 ? 'ini' : off>0&&off<=8*60 ? 'tarde' : off<-60&&off>=-180 ? 'antes' : 'fuera';
 }
 function ucfg(u){ return S.cfg.units[u]||{mode:'auto',M:true,T:true,N:true}; }
 function activeUnits(mk){
@@ -475,14 +477,14 @@ function periodLabel(){ return (S.month==='all'?'todo el periodo':mkLabel(S.mont
 function renderAdh(){
   var cells=periodCells(), tot=sumCells(cells,function(c){ return inShift(c.t); }), recs=periodRecs();
   var slotsAny=cells.filter(function(c){ return inShift(c.t) && c.exp.length; }), slotsHit=slotsAny.filter(function(c){ return c.got.length; });
-  var tm={ini:0,tarde:0,fuera:0}; recs.forEach(function(r){ tm[timing(r)]++; });
+  var tm={ini:0,tarde:0,antes:0,fuera:0}; recs.forEach(function(r){ tm[timing(r)]++; });
   var s=status(tot.p), h='';
   h+='<div class="month"><section class="card hero"><span class="lbl">Adherencia · '+esc(periodLabel())+'</span>'+
     '<div class="big num">'+pct(tot.p)+'</div>'+chip(s, s==='none'?null:(s==='good'?'Cumple la meta de '+S.cfg.meta+' %':'Meta '+S.cfg.meta+' %'))+meter(tot.p,s)+
     '<div class="facts"><span><b class="num">'+tot.g+'</b> de <b class="num">'+tot.e+'</b> turnos de montacargas con checklist</span>'+
     '<span><b class="num">'+slotsHit.length+'</b> de <b class="num">'+slotsAny.length+'</b> turnos con al menos un checklist</span>'+
     '<span><b class="num">'+recs.length+'</b> checklists llenados'+(tot.x?' · '+tot.x+' en turnos sin plan':'')+'</span>'+
-    '<span><b class="num">'+pct(div(tm.ini,recs.length))+'</b> llenados al inicio del turno</span></div></section>';
+    '<span><b class="num">'+pct(div(tm.ini,recs.length))+'</b> llenados al inicio del turno · '+pct(div(tm.antes,recs.length))+' antes del inicio</span></div></section>';
   h+=monthChart()+'</div>';
   h+=todoCard(cells,recs);
   h+=shiftCards(cells,recs);
@@ -521,7 +523,10 @@ function todoCard(cells,recs){
   if(zero.length) L.push(['crit',plural(zero.length,'turno completo','turnos completos')+' sin ningún checklist','Los más recientes: '+zero.slice(-4).reverse().map(function(c){ return fDate(c.dn)+' '+SHN[c.t]; }).join(' · ')+'.']);
   var ops=opStats(recs).filter(function(o){ return o.n>=10; });
   var late=ops.filter(function(o){ return o.ini/o.n<0.7; }).sort(function(a,b){ return a.ini/a.n-b.ini/b.n; }).slice(0,3);
-  if(late.length) L.push(['warn','Llenado tarde: '+late.map(function(o){ return o.name+' ('+pct(o.ini/o.n)+' al inicio)'; }).join(', '),'Menos del 70 % de sus checklists se llenaron al inicio del turno.']);
+  if(late.length) L.push(['warn','Fuera de la ventana de inicio: '+late.map(function(o){ return o.name+' ('+pct(o.ini/o.n)+' al inicio)'; }).join(', '),'Menos del 70 % de sus checklists se llenaron al inicio del turno (entre 1 h antes y '+S.cfg.tol+' h después).']);
+  var early=recs.filter(function(r){ return timing(r)==='antes'; });
+  if(early.length>=5){ var eT=SH.map(function(t){ return [t,early.filter(function(r){ return r.t===t; }).length]; }).sort(function(a,b){ return b[1]-a[1]; });
+    L.push(['warn',plural(early.length,'checklist llenado','checklists llenados')+' más de 1 h antes del inicio del turno ('+pct(div(early.length,recs.length))+')','Sobre todo en '+SHN[eT[0][0]]+' ('+eT[0][1]+'). Confirma si el checklist se hace antes de empezar o si el horario del turno es otro.']); }
   var oth=opStats(recs).filter(function(o){ return o.other; }).sort(function(a,b){ return b.other-a.other; });
   var othN=recs.filter(function(r){ return r.other; }).length;
   if(othN) L.push(['warn',plural(othN,'checklist llenado','checklists llenados')+' con el usuario de otra persona','Operadores: '+oth.slice(0,4).map(function(o){ return o.name+' ('+o.other+')'; }).join(', ')+'. Cada operador debe llenar con su propio usuario.']);
@@ -605,7 +610,7 @@ function unitCard(cells){
 function opStats(recs){
   var m={};
   recs.forEach(function(r){
-    var o=m[r.key]=m[r.key]||{key:r.key,name:opName(r.op),n:0,days:{},M:0,T:0,N:0,ini:0,tarde:0,fuera:0,other:0,empty:0,fails:0,pend:0,last:null,units:{}};
+    var o=m[r.key]=m[r.key]||{key:r.key,name:opName(r.op),n:0,days:{},M:0,T:0,N:0,ini:0,tarde:0,antes:0,fuera:0,other:0,empty:0,fails:0,pend:0,last:null,units:{}};
     o.n++; o.days[r.dn]=1; o[r.t]++; o[timing(r)]++; if(r.other) o.other++; if(r.empty) o.empty++; if(r.fails) o.fails++; if(r.pend) o.pend++;
     o.units[r.unit]=(o.units[r.unit]||0)+1; if(!o.last||r.dn>o.last.dn||(r.dn===o.last.dn&&SHI[r.t]>=SHI[o.last.t])) o.last=r;
   });
@@ -617,14 +622,14 @@ function renderOps(){
   var k=S.opSort[0], d=S.opSort[1];
   ops.sort(function(a,b){ var x=k==='name'?a.name.localeCompare(b.name):(k==='last'?a.last.dn-b.last.dn:a[k]-b[k]); return x*d || b.n-a.n; });
   var all=recs.length, ini=recs.filter(function(r){ return timing(r)==='ini'; }).length;
-  var cols=[['name','Operador',''],['n','Checklists',''],['nd','Días',''],['M','Mañana',''],['T','Tarde',''],['N','Noche',''],['pi','Al inicio','del turno'],['fuera','Fuera','de horario'],['other','Otro usuario','lo llenó'],['empty','Comentario','vacío'],['fails','Con fallas',''],['last','Último','checklist']];
+  var cols=[['name','Operador',''],['n','Checklists',''],['nd','Días',''],['M','Mañana',''],['T','Tarde',''],['N','Noche',''],['pi','Al inicio','del turno'],['antes','Antes','del inicio'],['fuera','Fuera','de horario'],['other','Otro usuario','lo llenó'],['empty','Comentario','vacío'],['fails','Con fallas',''],['last','Último','checklist']];
   var h='<section class="card"><div class="sechead"><div><span class="lbl">Operadores · '+esc(periodLabel())+'</span><p class="sub">'+plural(opStats(recs).length,'operador','operadores')+' · '+all+' checklists · '+pct(div(ini,all))+' al inicio del turno. Toca un nombre para ver sus checklists.</p></div>'+
     '<div class="tools"><label class="vh" for="opQ">Buscar operador</label><input type="search" id="opQ" placeholder="Buscar operador" value="'+esc(S.q)+'"></div></div>';
   h+='<div class="scroll" style="margin-top:8px"><table class="ops"><thead><tr>'+cols.map(function(c,i){ return '<th class="'+(i?'r':'')+'" data-sort="'+c[0]+'"'+(k===c[0]?' aria-sort="'+(d>0?'ascending':'descending')+'"':'')+'>'+c[1]+(c[2]?'<small>'+c[2]+'</small>':'')+'</th>'; }).join('')+'</tr></thead><tbody>';
   ops.forEach(function(o){
     var open=!!S.opOpen[o.key];
     h+='<tr class="p" aria-expanded="'+open+'"><td><button type="button" data-op="'+esc(o.key)+'">'+esc(o.name)+'</button></td><td class="r">'+o.n+'</td><td class="r">'+o.nd+'</td><td class="r">'+o.M+'</td><td class="r">'+o.T+'</td><td class="r">'+o.N+'</td>'+
-      '<td class="r">'+mini(o.pi,o.pi>=0.9?'good':o.pi>=0.7?'warn':'crit')+'</td><td class="r">'+tagN(o.fuera,o.n)+'</td><td class="r">'+tagN(o.other,o.n)+'</td><td class="r">'+tagN(o.empty,o.n)+'</td><td class="r">'+(o.fails||'<span class="dim">0</span>')+'</td>'+
+      '<td class="r">'+mini(o.pi,o.pi>=0.9?'good':o.pi>=0.7?'warn':'crit')+'</td><td class="r">'+tagN(o.antes,o.n)+'</td><td class="r">'+tagN(o.fuera,o.n)+'</td><td class="r">'+tagN(o.other,o.n)+'</td><td class="r">'+tagN(o.empty,o.n)+'</td><td class="r">'+(o.fails||'<span class="dim">0</span>')+'</td>'+
       '<td class="r">'+esc(fDate(o.last.dn))+' <span class="dim">'+SHN[o.last.t]+'</span></td></tr>';
     if(open){ var rr=recs.filter(function(r){ return r.key===o.key; }).slice().reverse(); h+='<tr class="d"><td colspan="'+cols.length+'"><p class="sub" style="margin-bottom:6px">Montacargas: '+Object.keys(o.units).map(function(u){ return esc(u)+' ('+o.units[u]+')'; }).join(', ')+'</p>'+recTable(rr.slice(0,60),false,'inner')+(rr.length>60?'<p class="sub" style="margin-top:6px">Mostrando los 60 más recientes de '+rr.length+'.</p>':'')+'</td></tr>'; }
   });
@@ -632,7 +637,8 @@ function renderOps(){
   h+='</tbody></table></div></section>';
   h+='<section class="card notes"><span class="lbl">Qué significa cada columna</span><ul>'+
     '<li><b>Al inicio del turno:</b> checklists llenados desde 1 h antes hasta '+S.cfg.tol+' h después del inicio del turno marcado.</li>'+
-    '<li><b>Fuera de horario:</b> la hora de llenado no cae dentro de las 8 h del turno marcado (posible turno mal seleccionado).</li>'+
+    '<li><b>Antes del inicio:</b> llenado entre 3 h y 1 h antes del inicio del turno marcado.</li>'+
+    '<li><b>Fuera de horario:</b> la hora de llenado no cae dentro de las 8 h del turno marcado ni en las 3 h previas (posible turno mal seleccionado).</li>'+
     '<li><b>Otro usuario lo llenó:</b> el checklist del operador se hizo con el usuario de VecFleet que normalmente usa otra persona.</li>'+
     '<li><b>Comentario vacío:</b> el campo de comentarios quedó en blanco o solo con un signo (por ejemplo ".").</li></ul></section>';
   document.getElementById('vOps').innerHTML=h;
@@ -641,7 +647,7 @@ function tagN(n,t){ if(!n) return '<span class="dim">0</span>'; var p=n/t; retur
 function recTable(rr,withOp,cls){
   return '<div class="scroll"><table class="'+(cls||'')+'"><thead><tr><th>Fecha</th><th>Turno</th><th class="r">Hora</th>'+(withOp!==false?'<th>Operador</th>':'')+'<th>Montacargas</th><th>Llenado</th><th>Fallas</th><th>Comentario</th><th></th></tr></thead><tbody>'+
     rr.map(function(r){ var tm=timing(r); return '<tr><td>'+esc(fDate(r.dn))+'</td><td>'+SHN[r.t]+'</td><td class="r">'+hm(r.min)+'</td>'+(withOp!==false?'<td>'+esc(opName(r.op))+(r.other?' <span class="tag mid">otro usuario</span>':'')+'</td>':'')+
-      '<td>'+esc(r.unit)+'</td><td>'+(tm==='ini'?'<span class="dim">Al inicio</span>':'<span class="tag '+(tm==='fuera'?'bad':'mid')+'">'+(tm==='fuera'?'Fuera de horario':'Después del inicio')+'</span>')+(withOp===false&&r.other?' <span class="tag mid">otro usuario</span>':'')+'</td>'+
+      '<td>'+esc(r.unit)+'</td><td>'+(tm==='ini'?'<span class="dim">Al inicio</span>':'<span class="tag '+(tm==='fuera'?'bad':'mid')+'">'+{tarde:'Después del inicio',antes:'Antes del inicio',fuera:'Fuera de horario'}[tm]+'</span>')+(withOp===false&&r.other?' <span class="tag mid">otro usuario</span>':'')+'</td>'+
       '<td>'+(r.bad.length?esc(r.bad.map(function(i){ return S.items[i]||('Punto '+(i+1)); }).join(', ')):r.fails?r.fails:'<span class="dim">—</span>')+(r.pend?' <span class="tag bad">pendiente</span>':'')+'</td>'+
       '<td>'+(r.empty?'<span class="tag mid">vacío</span>':esc(r.com))+'</td><td>'+(/^https?:\/\//.test(r.link)?'<a href="'+esc(r.link)+'" target="_blank" rel="noopener">Ver</a>':'')+'</td></tr>'; }).join('')+'</tbody></table></div>';
 }
