@@ -1,0 +1,734 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adherencia Checklist Montacargas</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap">
+<style>
+/* Layout: tablero de piso. Adherencia del mes y gráfica mensual arriba, luego qué atender, turnos, día a día y montacargas. */
+:root{
+  --bg:#f2f4f7; --surface:#fcfdfd; --sunken:#eef1f4;
+  --ink:#0d1116; --ink-2:#465060; --muted:#677280;
+  --line:#dde2e8; --axis:#b9c2cc;
+  --accent:#1c5cab; --accent-ink:#ffffff; --series:#2a78d6;
+  --good:#0ca30c; --warn:#fab219; --crit:#d03b3b;
+  --font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-label: "IBM Plex Sans Condensed", "IBM Plex Sans", system-ui, sans-serif;
+  --r:6px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1114; --surface:#171b20; --sunken:#11151a;
+    --ink:#f3f5f7; --ink-2:#b8c0ca; --muted:#8a94a0;
+    --line:#2a3039; --axis:#3b434e;
+    --accent:#6da7ec; --accent-ink:#0d1116; --series:#3987e5;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1114; --surface:#171b20; --sunken:#11151a;
+  --ink:#f3f5f7; --ink-2:#b8c0ca; --muted:#8a94a0;
+  --line:#2a3039; --axis:#3b434e;
+  --accent:#6da7ec; --accent-ink:#0d1116; --series:#3987e5;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:20px;padding-block:22px 48px;display:flex;flex-direction:column;gap:22px}
+h1,h2,h3,p{margin:0}
+h1{font-size:24px;font-weight:600;letter-spacing:-.01em;text-wrap:balance}
+h2{font-size:16px;font-weight:600;text-wrap:balance}
+.lbl{font-family:var(--font-label);font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
+.sub{color:var(--ink-2);overflow-wrap:anywhere}
+.num{font-variant-numeric:tabular-nums}
+
+/* Encabezado */
+.top{display:flex;flex-wrap:wrap;gap:14px 24px;align-items:flex-end;justify-content:space-between}
+.top > div:first-child{min-width:0;display:flex;flex-direction:column;gap:4px}
+.ctrls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button,select,.btn{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--axis);border-radius:var(--r);padding:7px 12px;cursor:pointer;line-height:1.3}
+button:hover,.btn:hover,select:hover{border-color:var(--ink-2)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:500}
+.btn.pri:hover{filter:brightness(1.08)}
+button.quiet{border-color:transparent;background:transparent;color:var(--ink-2);text-decoration:underline;text-underline-offset:3px;padding-inline:6px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.msg,.note{border:1px solid var(--crit);border-left-width:4px;background:var(--surface);padding:10px 14px;border-radius:var(--r)}
+.note{border-color:var(--warn)}
+.note.ok{border-color:var(--good)}
+.seg{display:inline-flex;gap:4px;flex-wrap:wrap}
+.seg button{padding:5px 12px;border-radius:999px}
+.seg button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+
+/* Zona de carga */
+.drop{border:2px dashed var(--axis);border-radius:10px;padding:34px 20px;text-align:center;display:flex;flex-direction:column;gap:10px;align-items:center;background:var(--surface)}
+body.dragging .drop{border-color:var(--accent);background:var(--sunken)}
+.drop p{max-width:62ch}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;min-width:0}
+.sechead{display:flex;flex-wrap:wrap;gap:10px 20px;align-items:center;justify-content:space-between}
+.sechead > div{min-width:0;display:flex;flex-direction:column;gap:2px}
+
+/* Resumen + gráfica mensual */
+.month{display:grid;grid-template-columns:minmax(250px,4fr) minmax(0,8fr);gap:14px}
+.hero{display:flex;flex-direction:column;gap:8px}
+.hero .big{font-size:60px;font-weight:600;line-height:1;letter-spacing:-.02em}
+.facts{display:flex;flex-direction:column;gap:3px;color:var(--ink-2);font-size:13px}
+.facts b{color:var(--ink);font-weight:600}
+.meter{height:8px;border-radius:4px;background:var(--trk);overflow:hidden}
+.meter i{display:block;height:100%;background:var(--st);border-radius:0 4px 4px 0}
+.s-good{--st:var(--good);--trk:color-mix(in srgb,var(--good) 18%,var(--surface))}
+.s-warn{--st:var(--warn);--trk:color-mix(in srgb,var(--warn) 24%,var(--surface))}
+.s-crit{--st:var(--crit);--trk:color-mix(in srgb,var(--crit) 16%,var(--surface))}
+.s-none{--st:var(--axis);--trk:var(--sunken)}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;white-space:nowrap}
+.chip i{font-style:normal;display:inline-grid;place-items:center;width:16px;height:16px;border-radius:50%;background:var(--st);color:#fff;font-size:10px;font-weight:700;line-height:1}
+.chip.s-warn i{color:#1b1400}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;color:var(--ink-2)}
+.legend .chip{font-weight:400}
+
+/* Columnas (adherencia por mes) */
+.chart{display:flex;flex-direction:column;gap:6px}
+.plot{position:relative;height:190px;margin:22px 0 0 34px;border-bottom:1px solid var(--axis)}
+.grid{position:absolute;left:0;right:0;border-top:1px solid var(--line)}
+.grid span{position:absolute;left:-34px;top:-8px;width:28px;text-align:right;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.goal{position:absolute;left:0;right:0;border-top:2px dashed var(--ink-2);z-index:1;pointer-events:none}
+.goal span{position:absolute;right:0;top:-18px;font-size:11px;color:var(--ink-2);background:var(--surface);padding:0 4px}
+.cols{position:absolute;inset:0;display:flex;justify-content:space-around;align-items:flex-end}
+.col{position:relative;flex:1;height:100%;display:flex;justify-content:center;align-items:flex-end;cursor:pointer;border:0;background:none;padding:0;border-radius:0}
+.col b{display:block;width:min(30px,60%);background:var(--st);border-radius:4px 4px 0 0;min-height:1px}
+.col:hover b,.col:focus-visible b{filter:brightness(1.15)}
+.col.on b{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--ink)}
+.col em{position:absolute;left:0;right:0;text-align:center;font-style:normal;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;padding-bottom:3px}
+.xlab{display:flex;justify-content:space-around;margin-left:34px}
+.xlab div{flex:1;text-align:center;min-width:0}
+.xlab strong{display:block;font-family:var(--font-label);font-size:13px}
+.xlab small{display:block;font-size:11px;color:var(--muted)}
+
+/* Qué atender */
+.todo{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:2px}
+.todo li{display:grid;grid-template-columns:22px minmax(0,1fr);gap:10px;padding:8px 4px;border-bottom:1px solid var(--line)}
+.todo li:last-child{border-bottom:0}
+.todo li > i{font-style:normal;display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:var(--st);color:#fff;font-size:11px;font-weight:700;margin-top:1px}
+.todo li.s-warn > i{color:#1b1400}
+.todo strong{font-weight:600}
+.todo p{color:var(--ink-2);font-size:13px;margin-top:1px}
+
+/* Turnos */
+.shifts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.shift{display:flex;flex-direction:column;gap:7px}
+.shift .big{font-size:36px;font-weight:600;line-height:1.05;letter-spacing:-.01em}
+.shift .facts{font-size:12.5px}
+
+/* Tablas */
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:7px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
+thead th{font-family:var(--font-label);font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-2);white-space:nowrap;border-bottom-color:var(--axis)}
+thead th small{display:block;font-family:var(--font);font-size:10.5px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--muted)}
+thead th[data-sort]{cursor:pointer}
+thead th[data-sort]:hover{color:var(--ink)}
+thead th[aria-sort="descending"]::after{content:" ▾"}
+thead th[aria-sort="ascending"]::after{content:" ▴"}
+td.r,th.r{text-align:right;white-space:nowrap}
+td.c,th.c{text-align:center}
+tr.tot td{background:var(--sunken);font-weight:600;border-bottom-color:var(--axis)}
+tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+tr.click{cursor:pointer}
+tr.click:hover td{background:var(--sunken)}
+td.hc{text-align:center;white-space:nowrap;min-width:74px}
+td.hc span{display:block;border-radius:4px;padding:3px 6px;background:var(--cellbg)}
+td.hc small{display:block;font-size:11px;color:var(--ink-2)}
+td.hc.s-good span{--cellbg:color-mix(in srgb,var(--good) 20%,transparent)}
+td.hc.s-warn span{--cellbg:color-mix(in srgb,var(--warn) 30%,transparent)}
+td.hc.s-crit span{--cellbg:color-mix(in srgb,var(--crit) 18%,transparent)}
+td.hc.s-none span{--cellbg:transparent;color:var(--muted)}
+.mini{display:flex;align-items:center;gap:8px;min-width:120px}
+.mini .meter{flex:1;height:6px}
+.mini span{width:40px;text-align:right;font-variant-numeric:tabular-nums}
+.tag{display:inline-block;border:1px solid var(--axis);border-radius:999px;padding:0 8px;font-size:12px;color:var(--ink-2);white-space:nowrap}
+.tag.bad{border-color:var(--crit);color:var(--crit)}
+.tag.mid{border-color:var(--warn)}
+.dim{color:var(--muted)}
+a{color:var(--accent)}
+input[type=text],input[type=number],input[type=search],input[type=time]{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--axis);border-radius:4px;padding:6px 9px}
+.tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tools input[type=search]{width:240px;max-width:100%}
+
+/* Día a día */
+.cal{border-collapse:separate;border-spacing:3px;width:auto;min-width:100%}
+.cal th,.cal td{border:0;padding:0}
+.cal thead th{font-size:11px;letter-spacing:0;text-transform:none;text-align:center;font-family:var(--font);font-weight:500;color:var(--ink-2);padding-bottom:2px}
+.cal thead th small{font-size:10px}
+.cal thead th.we{color:var(--muted)}
+.cal tbody th{font-family:var(--font-label);font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-2);padding-right:8px;white-space:nowrap;text-align:left}
+.cal td button{display:block;width:100%;min-width:30px;height:34px;border-radius:4px;border:1px solid transparent;padding:0;font-size:11.5px;font-weight:600;font-variant-numeric:tabular-nums;background:var(--cellbg,var(--sunken));color:var(--ink)}
+.cal td button.s-good{--cellbg:color-mix(in srgb,var(--good) 30%,transparent)}
+.cal td button.s-warn{--cellbg:color-mix(in srgb,var(--warn) 40%,transparent)}
+.cal td button.s-crit{--cellbg:color-mix(in srgb,var(--crit) 26%,transparent)}
+.cal td button.off{--cellbg:transparent;border:1px dashed var(--axis);color:var(--muted);font-weight:400}
+.cal td button.fut{--cellbg:transparent;border-color:transparent;color:transparent;cursor:default}
+.cal td button.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.cal tr.totr td button{height:24px;font-size:11px;font-weight:500}
+.detail{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:14px;margin-top:4px}
+.pills{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.pill{display:inline-flex;gap:6px;align-items:center;font-size:12.5px;border-radius:999px;padding:2px 10px;background:var(--cellbg,transparent);border:1px solid var(--line);white-space:nowrap}
+.pill.s-good{--cellbg:color-mix(in srgb,var(--good) 18%,transparent)}
+.pill.s-crit{--cellbg:color-mix(in srgb,var(--crit) 16%,transparent)}
+
+/* Operadores */
+table.ops{min-width:900px}
+.ops tr.p td:first-child button{border:0;background:none;padding:0;font:inherit;font-weight:500;color:var(--ink);text-align:left;cursor:pointer;display:inline-flex;gap:8px;align-items:baseline}
+.ops tr.p td:first-child button::before{content:"▸";color:var(--ink-2);display:inline-block;width:10px}
+.ops tr.p[aria-expanded="true"] td:first-child button::before{content:"▾"}
+.ops tr.d > td{background:var(--sunken);padding:8px 10px 14px 28px}
+.inner{background:var(--surface);border:1px solid var(--line);border-radius:4px;min-width:720px}
+.inner th{font-size:11px}
+.inner td{font-size:13px}
+
+/* Fallas */
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.hbars{display:flex;flex-direction:column;gap:2px;margin-top:10px}
+.hrow{display:grid;grid-template-columns:minmax(120px,42%) minmax(0,1fr) 44px;gap:4px 12px;align-items:center;padding:5px 6px;border-radius:4px}
+.hrow .hl{min-width:0;overflow-wrap:anywhere}
+.hrow .ht{position:relative;height:12px;background:var(--sunken);border-radius:0 4px 4px 0}
+.hrow .ht i{position:absolute;left:0;top:0;bottom:0;background:var(--series);border-radius:0 4px 4px 0;min-width:1px}
+.hrow .hv{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.empty-s{color:var(--muted);padding:10px 0}
+
+/* Plan y reglas */
+.editor{display:flex;flex-direction:column;gap:18px}
+.rules{display:flex;flex-wrap:wrap;gap:14px 28px;align-items:flex-end}
+.rules label{display:inline-flex;flex-direction:column;gap:4px;font-size:13px;color:var(--ink-2)}
+.rules input[type=number]{width:84px}
+.rules input[type=time]{width:120px}
+.days{display:flex;gap:4px;flex-wrap:wrap}
+.days label{flex-direction:row;align-items:center;gap:4px;border:1px solid var(--axis);border-radius:999px;padding:3px 10px;color:var(--ink)}
+.units td,.units th{padding:5px 8px}
+.units select{padding:4px 8px}
+.notes ul{margin:8px 0 0;padding-left:18px;color:var(--ink-2);display:flex;flex-direction:column;gap:5px;max-width:80ch}
+
+/* Pestañas */
+.tabs{display:flex;flex-wrap:wrap;gap:2px;border-bottom:1px solid var(--axis)}
+.tabs button{border:0;border-bottom:3px solid transparent;border-radius:0;background:none;padding:9px 14px 8px;color:var(--ink-2);font-weight:500;margin-bottom:-1px}
+.tabs button:hover{color:var(--ink)}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.view{display:flex;flex-direction:column;gap:22px}
+[hidden]{display:none!important}
+
+#tip{position:fixed;z-index:20;pointer-events:none;background:var(--ink);color:var(--bg);padding:7px 10px;border-radius:5px;font-size:12.5px;line-height:1.4;white-space:pre-line;max-width:300px;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+
+@media (max-width:920px){
+  .month,.two{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:720px){
+  .shifts{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:620px){
+  .wrap{padding-inline:16px}
+  .hero .big{font-size:52px}
+  .col em{font-size:10.5px}
+  .xlab strong{font-size:11.5px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <span class="lbl" id="kicker">Montacargas · Checklist preoperacional VecFleet</span>
+      <h1>Adherencia al checklist de montacargas</h1>
+      <p class="sub" id="subtitle">Carga el Excel exportado de VecFleet para medir el llenado por turno, día y mes.</p>
+    </div>
+    <div class="ctrls">
+      <label class="vh" for="monthSel">Periodo</label>
+      <select id="monthSel" hidden></select>
+      <div class="seg" id="shiftSeg" role="group" aria-label="Turno" hidden></div>
+      <label class="btn pri" for="fileIn" tabindex="0" id="fileBtn">Cargar Excel</label>
+      <input class="vh" type="file" id="fileIn" accept=".xlsx,.xls,.csv" multiple tabindex="-1">
+      <button type="button" id="cfgBtn" aria-expanded="false" aria-controls="editor" hidden>Plan y reglas</button>
+    </div>
+  </header>
+
+  <div class="msg" id="msg" role="alert" hidden></div>
+  <div class="note ok" id="info" role="status" hidden></div>
+
+  <section class="card editor" id="editor" hidden></section>
+
+  <section id="empty" class="drop">
+    <h2>Arrastra aquí el Excel del checklist de VecFleet</h2>
+    <p class="sub">El archivo se lee en tu navegador y no se sube a ningún servidor. Debe traer las columnas Fecha y hora de Creación, Chofer, TURNO y Movil, como el export "VecFleet-checklist". Puedes cargar varios exports: se combinan por ID sin duplicar.</p>
+    <label class="btn pri" for="fileIn">Elegir archivo</label>
+  </section>
+
+  <nav class="tabs" role="tablist" aria-label="Vista" id="tabs" hidden>
+    <button type="button" role="tab" data-view="adh">Adherencia</button>
+    <button type="button" role="tab" data-view="ops">Operadores</button>
+    <button type="button" role="tab" data-view="fal">Fallas y registros</button>
+  </nav>
+
+  <div class="view" id="vAdh" hidden></div>
+  <div class="view" id="vOps" hidden></div>
+  <div class="view" id="vFal" hidden></div>
+</div>
+<div id="tip" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+var KEY='adhMontacargas.v1';
+var MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+var MES3=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+var DIA=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'], DIAS=['lunes','martes','miércoles','jueves','viernes','sábados','domingos'], DIA1=['L','M','X','J','V','S','D'];
+var SH=['M','T','N'], SHN={M:'Mañana',T:'Tarde',N:'Noche'}, SHI={M:0,T:1,N:2};
+var TIMING={ini:'Al inicio del turno',tarde:'Después del inicio',fuera:'Fuera del horario del turno'};
+
+function defCfg(){ return {meta:95, days:[1,1,1,1,1,1,0], start:{M:'04:00',T:'12:00',N:'20:00'}, tol:2, minDays:5, units:{}}; }
+var S={recs:[], items:[], cfg:defCfg(), month:null, shift:'all', view:'adh', fileName:'', base:'', sel:null, opSort:['n',-1], opOpen:{}, q:'', rq:''};
+
+/* ---------- Utilidades ---------- */
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function norm(s){ return String(s==null?'':s).normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/\s+/g,' ').trim(); }
+function dnOf(y,m,d){ return Math.round(Date.UTC(y,m-1,d)/864e5); }
+function fromDn(dn){ var t=new Date(dn*864e5); return {y:t.getUTCFullYear(), m:t.getUTCMonth()+1, d:t.getUTCDate(), wd:(t.getUTCDay()+6)%7}; }
+function mkOf(dn){ var p=fromDn(dn); return p.y+'-'+String(p.m).padStart(2,'0'); }
+function mkLabel(mk,short){ var a=mk.split('-'); return (short?MES3:MESES)[+a[1]-1]+(short?'':' '+a[0]); }
+function fDate(dn){ var p=fromDn(dn); return DIA[p.wd]+' '+p.d+' '+MES3[p.m-1]; }
+function fDateY(dn){ var p=fromDn(dn); return String(p.d).padStart(2,'0')+'/'+String(p.m).padStart(2,'0')+'/'+p.y; }
+function hm(mins){ return String(Math.floor(mins/60)).padStart(2,'0')+':'+String(mins%60).padStart(2,'0'); }
+function toMin(s){ var a=String(s||'0:0').split(':'); return (+a[0]||0)*60+(+a[1]||0); }
+function pct(p){ return p==null ? '—' : Math.round(p*100)+' %'; }
+function div(a,b){ return b ? a/b : null; }
+function status(p){ var g=S.cfg.meta/100; return p==null ? 'none' : p>=g-1e-9 ? 'good' : p>=g-0.15 ? 'warn' : 'crit'; }
+var ST={good:['✓','Cumple'], warn:['!','Cerca de la meta'], crit:['✕','Bajo'], none:['–','Sin turnos esperados']};
+function chip(s,txt){ return '<span class="chip s-'+s+'"><i aria-hidden="true">'+ST[s][0]+'</i>'+(txt||ST[s][1])+'</span>'; }
+function meter(p,s){ return '<div class="meter s-'+(s||status(p))+'"><i style="width:'+Math.max(0,Math.min(100,(p||0)*100)).toFixed(1)+'%"></i></div>'; }
+function mini(p,s){ return p==null ? '<span class="dim">—</span>' : '<div class="mini">'+meter(p,s)+'<span>'+pct(p)+'</span></div>'; }
+function hcell(got,exp,extra){ var p=div(got,exp), s=status(p); return '<td class="hc s-'+s+'"><span>'+pct(p)+'</span><small>'+(exp?got+' de '+exp:(extra?extra+' extra':'sin turnos'))+'</small></td>'; }
+function opName(s){ return String(s||'').split(',').map(function(p){ return p.trim().toLowerCase().replace(/(^|[\s-])(\p{L})/gu,function(m,a,b){ return a+b.toUpperCase(); }); }).filter(Boolean).join(', '); }
+function itemName(h){ var s=String(h).replace(/\(.*?\)/g,'').trim().toLowerCase(); s=s.charAt(0).toUpperCase()+s.slice(1); return s.replace(/ y\/o /,' y/o ').replace(/5s/,'5S'); }
+function plural(n,a,b){ return n+' '+(n===1?a:b); }
+
+/* ---------- Persistencia (solo comodidad de este navegador) ---------- */
+function save(){
+  try{ localStorage.setItem(KEY, JSON.stringify({cfg:S.cfg, month:S.month, shift:S.shift, view:S.view, fileName:S.fileName, base:S.base, items:S.items,
+    recs:S.recs.map(function(r){ return [r.id,r.y,r.m,r.d,r.min,r.t,r.unit,r.op,r.by,r.pend?1:0,r.fails,r.bad,r.com,r.link]; })})); }catch(_){}
+}
+function load(){
+  try{
+    var o=JSON.parse(localStorage.getItem(KEY)||'null'); if(!o) return;
+    S.cfg=Object.assign(defCfg(), o.cfg||{}); S.cfg.start=Object.assign(defCfg().start, S.cfg.start||{});
+    S.month=o.month||null; S.shift=o.shift||'all'; S.view=o.view||'adh'; S.fileName=o.fileName||''; S.base=o.base||''; S.items=o.items||[];
+    S.recs=(o.recs||[]).map(function(a){ return mkRec({id:a[0],y:a[1],m:a[2],d:a[3],min:a[4],t:a[5],unit:a[6],op:a[7],by:a[8],pend:!!a[9],fails:a[10],bad:a[11]||[],com:a[12]||'',link:a[13]||''}); });
+  }catch(_){ S.recs=[]; }
+}
+
+/* ---------- Lectura del Excel ---------- */
+function parseDate(v){
+  if(v==null||v==='') return null;
+  if(typeof v==='number'){ var c=XLSX.SSF.parse_date_code(v); if(!c) return null; return {y:c.y,m:c.m,d:c.d,min:c.H*60+c.M}; }
+  if(v instanceof Date) return {y:v.getFullYear(),m:v.getMonth()+1,d:v.getDate(),min:v.getHours()*60+v.getMinutes()};
+  var s=String(v).trim(), a;
+  if((a=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?/))) return {y:+a[1],m:+a[2],d:+a[3],min:(+a[4]||0)*60+(+a[5]||0)};
+  if((a=s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})(?:,?\s+(\d{1,2}):(\d{2})(?::\d{2})?\s*([ap]\.?\s?m\.?)?)?/i))){
+    var h=+a[4]||0; if(a[6]){ var pm=/p/i.test(a[6]); if(pm&&h<12) h+=12; if(!pm&&h===12) h=0; }
+    var y=+a[3]; if(y<100) y+=2000; return {y:y,m:+a[2],d:+a[1],min:h*60+(+a[5]||0)};
+  }
+  return null;
+}
+function shiftOf(v){ var s=norm(v); return s.indexOf('MA')===0?'M':s.indexOf('TA')===0?'T':s.indexOf('NO')===0?'N':null; }
+function mkRec(r){
+  // Día operativo: un checklist de Noche hecho en la madrugada pertenece al turno que empezó el día anterior.
+  r.dn=dnOf(r.y,r.m,r.d)-((r.t==='N'&&r.min<8*60)?1:0);
+  r.mk=mkOf(r.dn); r.key=norm(r.op); r.empty=!/[\p{L}\p{N}]/u.test(r.com||'');
+  return r;
+}
+function readBook(wb){
+  var out=[], items=null, base='';
+  wb.SheetNames.forEach(function(sn){
+    var rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:true,defval:null}); var hi=-1;
+    for(var i=0;i<Math.min(rows.length,15);i++){ var n=(rows[i]||[]).map(norm); if(n.indexOf('CHOFER')>=0 && n.indexOf('TURNO')>=0){ hi=i; break; } }
+    if(hi<0) return;
+    var H=rows[hi].map(norm), col=function(f){ for(var j=0;j<H.length;j++) if(f(H[j])) return j; return -1; };
+    var c={id:col(function(h){return h==='ID';}), f:col(function(h){return h.indexOf('FECHA Y HORA')===0||h==='FECHA';}), by:col(function(h){return h==='CREADO POR';}),
+      est:col(function(h){return h==='ESTADO';}), fal:col(function(h){return h==='FALLAS';}), base:col(function(h){return h==='BASE';}),
+      unit:col(function(h){return h==='MOVIL';}), unit2:col(function(h){return h==='UNIDAD';}), op:col(function(h){return h==='CHOFER';}), t:col(function(h){return h==='TURNO';}),
+      com:col(function(h){return h.indexOf('COMENTARIO')===0;}), link:col(function(h){return h==='LINK';})};
+    if(c.f<0||c.op<0||c.t<0||(c.unit<0&&c.unit2<0)) return;
+    var ic=[]; for(var j=c.t+1;j<(c.com>0?c.com:c.t+1);j++) ic.push(j);
+    items=ic.map(function(j){ return itemName(rows[hi][j]); });
+    for(var k=hi+1;k<rows.length;k++){
+      var r=rows[k]; if(!r) continue; var d=parseDate(r[c.f]), t=shiftOf(r[c.t]), op=String(r[c.op]||'').trim();
+      if(!d||!t||!op) continue;
+      if(!base && c.base>=0 && r[c.base]) base=String(r[c.base]).trim();
+      var bad=[]; ic.forEach(function(j,ii){ if(norm(r[j])==='DESAPROBADO') bad.push(ii); });
+      var fl=c.fal>=0 ? (parseInt(r[c.fal],10)||0) : bad.length;
+      out.push(mkRec({id:c.id>=0&&r[c.id]!=null?String(r[c.id]).trim():(d.y+'-'+d.m+'-'+d.d+'-'+d.min+'-'+op), y:d.y,m:d.m,d:d.d,min:d.min,t:t,
+        unit:String((c.unit>=0?r[c.unit]:null)||r[c.unit2]||'').trim()||'Sin unidad', op:op, by:c.by>=0?String(r[c.by]||'').trim():'',
+        pend:c.est>=0&&norm(r[c.est])==='PENDIENTE', fails:fl, bad:bad, com:c.com>=0?String(r[c.com]||'').trim():'', link:c.link>=0?String(r[c.link]||'').trim():''}));
+    }
+  });
+  return {recs:out, items:items, base:base};
+}
+function handleFiles(files){
+  files=Array.prototype.slice.call(files||[]); if(!files.length) return;
+  hide('msg'); hide('info');
+  var done=0, added=0, upd=0, names=[], bad=[];
+  files.forEach(function(f){
+    var fr=new FileReader();
+    fr.onload=function(){
+      try{
+        var res=readBook(XLSX.read(new Uint8Array(fr.result),{type:'array'}));
+        if(!res.recs.length) bad.push(f.name);
+        else{
+          var byId={}; S.recs.forEach(function(r,i){ byId[r.id]=i; });
+          res.recs.forEach(function(r){ if(byId[r.id]!=null){ S.recs[byId[r.id]]=r; upd++; } else { byId[r.id]=S.recs.length; S.recs.push(r); added++; } });
+          if(res.items && res.items.length) S.items=res.items; if(res.base) S.base=res.base; names.push(f.name);
+        }
+      }catch(e){ bad.push(f.name); }
+      if(++done===files.length) afterLoad(names,bad,added,upd);
+    };
+    fr.readAsArrayBuffer(f);
+  });
+}
+function afterLoad(names,bad,added,upd){
+  if(bad.length) show('msg','No encontré checklists en: '+bad.join(', ')+'. El archivo debe traer las columnas Fecha y hora de Creación, Chofer, TURNO y Movil.');
+  if(names.length){
+    S.fileName=names.join(', '); S.month=null; S.sel=null; S.opOpen={};
+    show('info','Listo: '+plural(added,'checklist nuevo','checklists nuevos')+(upd?' y '+plural(upd,'actualizado','actualizados'):'')+' de '+S.fileName+'. Total cargado: '+S.recs.length+'.');
+  }
+  index(); save(); render();
+}
+function show(id,t){ var e=document.getElementById(id); e.textContent=t; e.hidden=false; }
+function hide(id){ document.getElementById(id).hidden=true; }
+
+/* ---------- Índices y cálculo ---------- */
+var IX=null;
+function index(){
+  S.recs.sort(function(a,b){ return a.dn-b.dn || SHI[a.t]-SHI[b.t] || a.y-b.y || a.m-b.m || a.d-b.d || a.min-b.min; });
+  var cov={}, unitDays={}, months={}, lastDn=-Infinity, lastT=0, creator={};
+  S.recs.forEach(function(r,i){
+    var k=r.dn+'|'+r.t; (cov[k]=cov[k]||{})[r.unit]=(cov[k][r.unit]||[]).concat(i);
+    var u=(unitDays[r.mk]=unitDays[r.mk]||{}); (u[r.unit]=u[r.unit]||{})[r.dn]=1;
+    months[r.mk]=1;
+    if(r.dn>lastDn||(r.dn===lastDn&&SHI[r.t]>lastT)){ lastDn=r.dn; lastT=SHI[r.t]; }
+    if(r.by){ var c=(creator[r.by]=creator[r.by]||{}); c[r.key]=(c[r.key]||0)+1; }
+  });
+  // Cada usuario de VecFleet se asocia con el operador que más llena con ese usuario; si llena para otro, se marca.
+  var owner={}; Object.keys(creator).forEach(function(b){ var best=null,n=-1; Object.keys(creator[b]).forEach(function(k){ if(creator[b][k]>n){ n=creator[b][k]; best=k; } }); owner[b]=best; });
+  S.recs.forEach(function(r){ r.other=!!(r.by && owner[r.by] && owner[r.by]!==r.key); });
+  var units={}; S.recs.forEach(function(r){ units[r.unit]=(units[r.unit]||0)+1; });
+  IX={cov:cov, unitDays:unitDays, months:Object.keys(months).sort(), lastDn:lastDn, lastT:lastT, units:units, owner:owner};
+  if(!S.month || (S.month!=='all' && !months[S.month])) S.month=IX.months[IX.months.length-1]||null;
+}
+function timing(r){
+  var s=toMin(S.cfg.start[r.t]), off=((r.min-s)%1440+1440)%1440; if(off>1440-60) off-=1440;
+  return off<=S.cfg.tol*60 ? 'ini' : off<=8*60 ? 'tarde' : 'fuera';
+}
+function ucfg(u){ return S.cfg.units[u]||{mode:'auto',M:true,T:true,N:true}; }
+function activeUnits(mk){
+  var ud=IX.unitDays[mk]||{}, all={}; Object.keys(IX.units).forEach(function(u){ all[u]=1; });
+  return Object.keys(all).filter(function(u){ var c=ucfg(u); if(c.mode==='off') return false; if(c.mode==='on') return true; return Object.keys(ud[u]||{}).length>=S.cfg.minDays; }).sort();
+}
+// Evalúa un mes: cada celda es día × turno con los montacargas esperados y los que tienen checklist.
+function evalMonth(mk){
+  var a=mk.split('-'), y=+a[0], m=+a[1], first=dnOf(y,m,1), last=dnOf(y,m+1,1)-1, units=activeUnits(mk), cells=[];
+  for(var dn=first; dn<=last; dn++){
+    var p=fromDn(dn), op=!!S.cfg.days[p.wd];
+    SH.forEach(function(t){
+      var fut = dn>IX.lastDn || (dn===IX.lastDn && SHI[t]>IX.lastT);
+      var slot=IX.cov[dn+'|'+t]||{}, exp=[], got=[], extra=[];
+      if(!fut){
+        units.forEach(function(u){ if(op && ucfg(u)[t]!==false){ exp.push(u); if(slot[u]) got.push(u); } });
+        Object.keys(slot).forEach(function(u){ if(exp.indexOf(u)<0) extra.push(u); });
+      }
+      cells.push({dn:dn, t:t, wd:p.wd, op:op, fut:fut, exp:exp, got:got, extra:extra, slot:slot});
+    });
+  }
+  return {mk:mk, units:units, cells:cells};
+}
+function periodMonths(){ return S.month==='all' ? IX.months : [S.month]; }
+function periodCells(){ var c=[]; periodMonths().forEach(function(mk){ c=c.concat(evalMonth(mk).cells); }); return c; }
+function inShift(t){ return S.shift==='all' || S.shift===t; }
+function sumCells(cells,f){ var e=0,g=0,x=0; cells.forEach(function(c){ if(!f||f(c)){ e+=c.exp.length; g+=c.got.length; x+=c.extra.length; } }); return {e:e,g:g,x:x,p:div(g,e)}; }
+function periodRecs(){ var ms={}; periodMonths().forEach(function(m){ ms[m]=1; }); return S.recs.filter(function(r){ return ms[r.mk] && inShift(r.t); }); }
+
+/* ---------- Render ---------- */
+function render(){
+  var has=S.recs.length>0;
+  document.getElementById('empty').hidden=has;
+  ['tabs','monthSel','shiftSeg','cfgBtn'].forEach(function(id){ document.getElementById(id).hidden=!has; });
+  if(!has){ ['vAdh','vOps','vFal'].forEach(function(id){ document.getElementById(id).hidden=true; }); document.getElementById('editor').hidden=true; return; }
+  document.getElementById('kicker').textContent='Montacargas · Checklist preoperacional VecFleet'+(S.base?' · '+S.base:'');
+  var f=S.recs[0], l=S.recs[S.recs.length-1];
+  document.getElementById('subtitle').textContent=S.recs.length+' checklists del '+fDateY(f.dn)+' al '+fDateY(l.dn)+(S.fileName?' · '+S.fileName:'');
+  var ms=document.getElementById('monthSel');
+  ms.innerHTML=IX.months.slice().reverse().map(function(m){ return '<option value="'+m+'"'+(m===S.month?' selected':'')+'>'+mkLabel(m)+'</option>'; }).join('')+'<option value="all"'+(S.month==='all'?' selected':'')+'>Todo el periodo</option>';
+  document.getElementById('shiftSeg').innerHTML=[['all','Todos los turnos']].concat(SH.map(function(t){ return [t,SHN[t]]; })).map(function(o){ return '<button type="button" data-shift="'+o[0]+'" aria-pressed="'+(S.shift===o[0])+'">'+o[1]+'</button>'; }).join('');
+  document.querySelectorAll('#tabs button').forEach(function(b){ b.setAttribute('aria-selected', String(b.dataset.view===S.view)); });
+  document.getElementById('vAdh').hidden=S.view!=='adh'; document.getElementById('vOps').hidden=S.view!=='ops'; document.getElementById('vFal').hidden=S.view!=='fal';
+  if(!document.getElementById('editor').hidden) renderEditor();
+  if(S.view==='adh') renderAdh(); else if(S.view==='ops') renderOps(); else renderFal();
+}
+function periodLabel(){ return (S.month==='all'?'todo el periodo':mkLabel(S.month))+(S.shift==='all'?'':' · turno '+SHN[S.shift]); }
+
+function renderAdh(){
+  var cells=periodCells(), tot=sumCells(cells,function(c){ return inShift(c.t); }), recs=periodRecs();
+  var slotsAny=cells.filter(function(c){ return inShift(c.t) && c.exp.length; }), slotsHit=slotsAny.filter(function(c){ return c.got.length; });
+  var tm={ini:0,tarde:0,fuera:0}; recs.forEach(function(r){ tm[timing(r)]++; });
+  var s=status(tot.p), h='';
+  h+='<div class="month"><section class="card hero"><span class="lbl">Adherencia · '+esc(periodLabel())+'</span>'+
+    '<div class="big num">'+pct(tot.p)+'</div>'+chip(s, s==='none'?null:(s==='good'?'Cumple la meta de '+S.cfg.meta+' %':'Meta '+S.cfg.meta+' %'))+meter(tot.p,s)+
+    '<div class="facts"><span><b class="num">'+tot.g+'</b> de <b class="num">'+tot.e+'</b> turnos de montacargas con checklist</span>'+
+    '<span><b class="num">'+slotsHit.length+'</b> de <b class="num">'+slotsAny.length+'</b> turnos con al menos un checklist</span>'+
+    '<span><b class="num">'+recs.length+'</b> checklists llenados'+(tot.x?' · '+tot.x+' en turnos sin plan':'')+'</span>'+
+    '<span><b class="num">'+pct(div(tm.ini,recs.length))+'</b> llenados al inicio del turno</span></div></section>';
+  h+=monthChart()+'</div>';
+  h+=todoCard(cells,recs);
+  h+=shiftCards(cells,recs);
+  h+=calendarCard();
+  h+=unitCard(cells);
+  h+='<section class="card notes"><span class="lbl">Cómo se mide</span><ul>'+
+    '<li>Se espera un checklist por cada montacargas en operación, en cada turno (Mañana, Tarde y Noche) de cada día que opera el CD ('+S.cfg.days.map(function(v,i){ return v?DIA[i]:null; }).filter(Boolean).join(', ')+'). Adherencia = turnos de montacargas con checklist ÷ turnos esperados.</li>'+
+    '<li>Un montacargas está en operación en el mes si tiene checklists en al menos '+S.cfg.minDays+' días de ese mes; puedes fijarlo o excluirlo en "Plan y reglas".</li>'+
+    '<li>El turno se toma de la columna TURNO. Un checklist de Noche hecho antes de las 8:00 cuenta para la noche del día anterior.</li>'+
+    '<li>"Al inicio del turno" = llenado hasta '+S.cfg.tol+' h después del inicio ('+SH.map(function(t){ return SHN[t]+' '+S.cfg.start[t]; }).join(', ')+') o hasta 1 h antes.</li>'+
+    '<li>El último día cargado solo cuenta hasta el último turno con registros.</li></ul></section>';
+  document.getElementById('vAdh').innerHTML=h;
+}
+function monthChart(){
+  var data=IX.months.map(function(mk){ var c=evalMonth(mk).cells, t=sumCells(c,function(x){ return inShift(x.t); }); return {mk:mk, p:t.p, g:t.g, e:t.e}; });
+  var show=data.slice(-12), g=S.cfg.meta;
+  var h='<section class="card chart"><div class="sechead"><div><span class="lbl">Adherencia por mes'+(S.shift==='all'?'':' · '+SHN[S.shift])+'</span><p class="sub">Toca un mes para verlo en detalle.</p></div>'+
+    '<div class="legend">'+chip('good','≥ '+g+' %')+chip('warn','≥ '+(g-15)+' %')+chip('crit','< '+(g-15)+' %')+'</div></div>';
+  h+='<div class="plot">'+[0,25,50,75,100].map(function(v){ return '<div class="grid" style="bottom:'+v+'%"><span>'+v+'</span></div>'; }).join('')+
+    '<div class="goal" style="bottom:'+g+'%"><span>Meta '+g+' %</span></div><div class="cols">'+
+    show.map(function(d){ var s=status(d.p); return '<button type="button" class="col s-'+s+(d.mk===S.month?' on':'')+'" data-month="'+d.mk+'" data-tip="'+esc(mkLabel(d.mk)+'\n'+pct(d.p)+' · '+d.g+' de '+d.e+' turnos con checklist')+'" aria-label="'+esc(mkLabel(d.mk)+': '+pct(d.p))+'">'+
+      '<em style="bottom:'+Math.min(100,(d.p||0)*100)+'%">'+(d.p==null?'—':Math.round(d.p*100))+'</em><b style="height:'+Math.min(100,(d.p||0)*100)+'%"></b></button>'; }).join('')+'</div></div>';
+  h+='<div class="xlab">'+show.map(function(d){ return '<div><strong>'+mkLabel(d.mk,true)+'</strong><small>'+d.g+'/'+d.e+'</small></div>'; }).join('')+'</div></section>';
+  return h;
+}
+function todoCard(cells,recs){
+  var L=[];
+  var byT=SH.filter(inShift).map(function(t){ var x=sumCells(cells,function(c){ return c.t===t; }); return {t:t,x:x}; }).filter(function(o){ return o.x.e; });
+  if(byT.length>1){ byT.sort(function(a,b){ return a.x.p-b.x.p; }); var w=byT[0]; if(status(w.x.p)!=='good') L.push([status(w.x.p),'El turno '+SHN[w.t]+' es el de menor adherencia: '+pct(w.x.p),'Faltaron '+(w.x.e-w.x.g)+' de '+w.x.e+' checklists esperados en ese turno.']); }
+  var um={}; cells.forEach(function(c){ if(!inShift(c.t)) return; c.exp.forEach(function(u){ var k=u+'|'+c.t; um[k]=um[k]||{u:u,t:c.t,e:0,g:0}; um[k].e++; if(c.got.indexOf(u)>=0) um[k].g++; }); });
+  var uw=Object.keys(um).map(function(k){ return um[k]; }).filter(function(o){ return o.e>=5; }).sort(function(a,b){ return a.g/a.e-b.g/b.e; }).slice(0,2);
+  uw.forEach(function(o){ if(status(o.g/o.e)!=='good') L.push([status(o.g/o.e),'Montacargas '+o.u+' en turno '+SHN[o.t]+': '+pct(o.g/o.e),'Tiene checklist en '+o.g+' de '+o.e+' turnos. Confirma quién lo opera en ese turno o si no se usa (ajústalo en "Plan y reglas").']); });
+  var wd=[0,1,2,3,4,5,6].map(function(i){ var x=sumCells(cells,function(c){ return c.wd===i && inShift(c.t); }); return {i:i,x:x}; }).filter(function(o){ return o.x.e>=6; });
+  if(wd.length>1){ wd.sort(function(a,b){ return a.x.p-b.x.p; }); var d=wd[0]; if(status(d.x.p)!=='good') L.push([status(d.x.p),'Los '+DIAS[d.i]+' tienen la adherencia más baja: '+pct(d.x.p),d.x.g+' de '+d.x.e+' turnos de montacargas con checklist ese día de la semana.']); }
+  var zero=cells.filter(function(c){ return inShift(c.t) && c.exp.length && !c.got.length; });
+  if(zero.length) L.push(['crit',plural(zero.length,'turno completo','turnos completos')+' sin ningún checklist','Los más recientes: '+zero.slice(-4).reverse().map(function(c){ return fDate(c.dn)+' '+SHN[c.t]; }).join(' · ')+'.']);
+  var ops=opStats(recs).filter(function(o){ return o.n>=10; });
+  var late=ops.filter(function(o){ return o.ini/o.n<0.7; }).sort(function(a,b){ return a.ini/a.n-b.ini/b.n; }).slice(0,3);
+  if(late.length) L.push(['warn','Llenado tarde: '+late.map(function(o){ return o.name+' ('+pct(o.ini/o.n)+' al inicio)'; }).join(', '),'Menos del 70 % de sus checklists se llenaron al inicio del turno.']);
+  var oth=opStats(recs).filter(function(o){ return o.other; }).sort(function(a,b){ return b.other-a.other; });
+  var othN=recs.filter(function(r){ return r.other; }).length;
+  if(othN) L.push(['warn',plural(othN,'checklist llenado','checklists llenados')+' con el usuario de otra persona','Operadores: '+oth.slice(0,4).map(function(o){ return o.name+' ('+o.other+')'; }).join(', ')+'. Cada operador debe llenar con su propio usuario.']);
+  var emp=recs.filter(function(r){ return r.empty; }).length;
+  if(emp>=5){ var eo=opStats(recs).filter(function(o){ return o.empty; }).sort(function(a,b){ return b.empty-a.empty; }); L.push(['warn',plural(emp,'checklist','checklists')+' con comentario vacío o solo un signo ('+pct(div(emp,recs.length))+')','Sobre todo: '+eo.slice(0,3).map(function(o){ return o.name+' ('+o.empty+')'; }).join(', ')+'.']); }
+  var pend=recs.filter(function(r){ return r.pend; }).length;
+  if(pend) L.push(['crit',plural(pend,'checklist','checklists')+' con fallas pendientes de validar','Revísalos en la pestaña "Fallas y registros".']);
+  if(!L.length) L.push(['good','Sin alertas en '+periodLabel(),'Todos los turnos y montacargas están en meta.']);
+  return '<section class="card"><div class="sechead"><div><span class="lbl">Oportunidades de mejora</span><p class="sub">Lo que más baja la adherencia en '+esc(periodLabel())+'.</p></div></div><ul class="todo">'+
+    L.map(function(x){ return '<li class="s-'+x[0]+'"><i aria-hidden="true">'+ST[x[0]][0]+'</i><div><strong>'+esc(x[1])+'</strong><p>'+esc(x[2])+'</p></div></li>'; }).join('')+'</ul></section>';
+}
+function shiftCards(cells,recs){
+  var h='<section class="card"><div class="sechead"><div><span class="lbl">Por turno · '+esc(S.month==='all'?'todo el periodo':mkLabel(S.month))+'</span></div></div><div class="shifts" style="margin-top:12px">';
+  SH.forEach(function(t){
+    var x=sumCells(cells,function(c){ return c.t===t; }), rr=S.recs.filter(function(r){ return r.t===t && periodMonths().indexOf(r.mk)>=0; });
+    var ini=rr.filter(function(r){ return timing(r)==='ini'; }).length, s=status(x.p);
+    var hits=cells.filter(function(c){ return c.t===t && c.exp.length; }), z=hits.filter(function(c){ return !c.got.length; }).length;
+    h+='<div class="shift" style="'+(inShift(t)?'':'opacity:.45')+'"><span class="lbl">'+SHN[t]+' <span class="dim">· desde '+esc(S.cfg.start[t])+'</span></span><div class="big num">'+pct(x.p)+'</div>'+meter(x.p,s)+
+      '<div class="facts"><span>'+x.g+' de '+x.e+' con checklist</span><span>'+rr.length+' checklists · '+pct(div(ini,rr.length))+' al inicio</span><span>'+plural(z,'turno','turnos')+' sin ningún checklist</span></div></div>';
+  });
+  h+='</div>';
+  // Mes × turno
+  h+='<div class="scroll" style="margin-top:18px"><table><thead><tr><th>Mes</th>'+SH.map(function(t){ return '<th class="c">'+SHN[t]+'</th>'; }).join('')+'<th class="c">Total</th><th class="r">Checklists</th><th class="r">Al inicio</th></tr></thead><tbody>';
+  IX.months.slice().reverse().forEach(function(mk){
+    var c=evalMonth(mk).cells, rr=S.recs.filter(function(r){ return r.mk===mk && inShift(r.t); }), ini=rr.filter(function(r){ return timing(r)==='ini'; }).length, tt=sumCells(c,function(x){ return inShift(x.t); });
+    h+='<tr class="click'+(mk===S.month?' sel':'')+'" data-month="'+mk+'" tabindex="0"><td>'+mkLabel(mk)+'</td>'+SH.map(function(t){ var x=sumCells(c,function(y){ return y.t===t; }); return hcell(x.g,x.e,x.x); }).join('')+hcell(tt.g,tt.e,tt.x)+
+      '<td class="r">'+rr.length+'</td><td class="r">'+pct(div(ini,rr.length))+'</td></tr>';
+  });
+  return h+'</tbody></table></div></section>';
+}
+function calendarCard(){
+  var mk=S.month==='all' ? IX.months[IX.months.length-1] : S.month, ev=evalMonth(mk), byDay={};
+  ev.cells.forEach(function(c){ (byDay[c.dn]=byDay[c.dn]||{})[c.t]=c; });
+  var days=Object.keys(byDay).map(Number).sort(function(a,b){ return a-b; });
+  var h='<section class="card"><div class="sechead"><div><span class="lbl">Día a día · '+esc(mkLabel(mk))+'</span><p class="sub">Cada cuadro es un turno: montacargas con checklist de los esperados. Tócalo para ver quién llenó y qué faltó.'+(S.month==='all'?' Elige un mes arriba para cambiar el calendario.':'')+'</p></div>'+
+    '<div class="legend">'+chip('good','Completo')+chip('warn','Parcial')+chip('crit','Bajo o vacío')+'<span class="chip"><span style="display:inline-block;width:14px;height:14px;border:1px dashed var(--axis);border-radius:3px"></span>No opera</span></div></div>';
+  h+='<div class="scroll" style="margin-top:12px"><table class="cal"><thead><tr><th></th>'+days.map(function(dn){ var p=fromDn(dn); return '<th class="'+(S.cfg.days[p.wd]?'':'we')+'">'+p.d+'<small>'+DIA1[p.wd]+'</small></th>'; }).join('')+'</tr></thead><tbody>';
+  SH.forEach(function(t){
+    if(!inShift(t)) return;
+    h+='<tr><th scope="row">'+SHN[t]+'</th>'+days.map(function(dn){ var c=byDay[dn][t]; return '<td>'+calBtn(c)+'</td>'; }).join('')+'</tr>';
+  });
+  h+='<tr class="totr"><th scope="row">Día</th>'+days.map(function(dn){ var cs=SH.filter(inShift).map(function(t){ return byDay[dn][t]; }), x=sumCells(cs);
+    var fut=cs.every(function(c){ return c.fut; }); return '<td><button type="button" tabindex="-1" class="'+(fut?'fut':x.e?'s-'+status(x.p):'off')+'" data-tip="'+esc(fDate(dn)+'\n'+(x.e?pct(x.p)+' · '+x.g+' de '+x.e:'Sin turnos esperados'))+'">'+(fut?'':x.e?Math.round(x.p*100):'')+'</button></td>'; }).join('')+'</tr>';
+  h+='</tbody></table></div>';
+  var sel=S.sel && byDay[S.sel.dn] && byDay[S.sel.dn][S.sel.t];
+  if(sel) h+=slotDetail(sel);
+  return h+'</section>';
+}
+function calBtn(c){
+  if(c.fut) return '<button type="button" class="fut" tabindex="-1" aria-hidden="true"></button>';
+  var on=S.sel&&S.sel.dn===c.dn&&S.sel.t===c.t?' on':'', miss=c.exp.filter(function(u){ return c.got.indexOf(u)<0; });
+  var tip=fDate(c.dn)+' · '+SHN[c.t]+'\n'+(c.exp.length?c.got.length+' de '+c.exp.length+' montacargas con checklist':'No opera'+(c.extra.length?' · '+c.extra.length+' checklist extra':''))+(miss.length?'\nFaltó: '+miss.join(', '):'');
+  if(!c.exp.length) return '<button type="button" class="off'+on+'" data-slot="'+c.dn+'|'+c.t+'" data-tip="'+esc(tip)+'">'+(c.extra.length?'+'+c.extra.length:'')+'</button>';
+  return '<button type="button" class="s-'+status(c.got.length/c.exp.length)+on+'" data-slot="'+c.dn+'|'+c.t+'" data-tip="'+esc(tip)+'">'+c.got.length+'/'+c.exp.length+'</button>';
+}
+function slotDetail(c){
+  var miss=c.exp.filter(function(u){ return c.got.indexOf(u)<0; }), ids=[];
+  Object.keys(c.slot).forEach(function(u){ ids=ids.concat(c.slot[u]); });
+  var rr=ids.map(function(i){ return S.recs[i]; }).sort(function(a,b){ return a.min-b.min; });
+  var h='<div class="detail"><div class="sechead"><div><h2>'+esc(fDate(c.dn)+' · turno '+SHN[c.t])+'</h2><p class="sub">'+(c.exp.length?c.got.length+' de '+c.exp.length+' montacargas con checklist':'Día sin operación en el plan')+'</p></div><button type="button" class="quiet" data-close="1">Cerrar</button></div>';
+  h+='<div class="pills">'+c.exp.map(function(u){ var ok=c.got.indexOf(u)>=0; return '<span class="pill s-'+(ok?'good':'crit')+'">'+(ok?'✓ ':'✕ ')+esc(u)+'</span>'; }).join('')+c.extra.map(function(u){ return '<span class="pill">+ '+esc(u)+' (fuera del plan)</span>'; }).join('')+'</div>';
+  if(rr.length) h+=recTable(rr,true); else h+='<p class="empty-s">No se llenó ningún checklist en este turno.</p>';
+  return h+'</div>';
+}
+function unitCard(cells){
+  var um={}; cells.forEach(function(c){ c.exp.forEach(function(u){ var o=um[u]=um[u]||{u:u}; o[c.t]=o[c.t]||{e:0,g:0}; o[c.t].e++; if(c.got.indexOf(u)>=0) o[c.t].g++; }); });
+  var recs=periodRecs(), ru={}; recs.forEach(function(r){ var o=ru[r.unit]=ru[r.unit]||{n:0,ops:{}}; o.n++; o.ops[r.op]=(o.ops[r.op]||0)+1; });
+  var list=Object.keys(Object.assign({},um,ru)).sort(function(a,b){ return (ru[b]?ru[b].n:0)-(ru[a]?ru[a].n:0); });
+  var h='<section class="card"><div class="sechead"><div><span class="lbl">Por montacargas · '+esc(periodLabel())+'</span><p class="sub">Los que no están en operación solo muestran sus checklists.</p></div></div><div class="scroll" style="margin-top:8px"><table><thead><tr><th>Montacargas</th>'+
+    SH.filter(inShift).map(function(t){ return '<th class="c">'+SHN[t]+'</th>'; }).join('')+'<th class="c">Total</th><th class="r">Checklists</th><th>Operadores principales</th></tr></thead><tbody>';
+  list.forEach(function(u){
+    var o=um[u]||{}, e=0,g=0; SH.filter(inShift).forEach(function(t){ if(o[t]){ e+=o[t].e; g+=o[t].g; } });
+    var ops=ru[u]?Object.keys(ru[u].ops).sort(function(a,b){ return ru[u].ops[b]-ru[u].ops[a]; }).slice(0,3).map(function(n){ return esc(opName(n))+' <span class="dim">('+ru[u].ops[n]+')</span>'; }).join(', '):'<span class="dim">—</span>';
+    h+='<tr><td><strong>'+esc(u)+'</strong>'+(um[u]?'':' <span class="tag">fuera del plan</span>')+'</td>'+SH.filter(inShift).map(function(t){ return o[t]?hcell(o[t].g,o[t].e):'<td class="hc s-none"><span>—</span></td>'; }).join('')+(e?hcell(g,e):'<td class="hc s-none"><span>—</span></td>')+
+      '<td class="r">'+(ru[u]?ru[u].n:0)+'</td><td>'+ops+'</td></tr>';
+  });
+  return h+'</tbody></table></div></section>';
+}
+
+/* ---------- Operadores ---------- */
+function opStats(recs){
+  var m={};
+  recs.forEach(function(r){
+    var o=m[r.key]=m[r.key]||{key:r.key,name:opName(r.op),n:0,days:{},M:0,T:0,N:0,ini:0,tarde:0,fuera:0,other:0,empty:0,fails:0,pend:0,last:null,units:{}};
+    o.n++; o.days[r.dn]=1; o[r.t]++; o[timing(r)]++; if(r.other) o.other++; if(r.empty) o.empty++; if(r.fails) o.fails++; if(r.pend) o.pend++;
+    o.units[r.unit]=(o.units[r.unit]||0)+1; if(!o.last||r.dn>o.last.dn||(r.dn===o.last.dn&&SHI[r.t]>=SHI[o.last.t])) o.last=r;
+  });
+  return Object.keys(m).map(function(k){ var o=m[k]; o.nd=Object.keys(o.days).length; o.pi=o.ini/o.n; return o; });
+}
+function renderOps(){
+  var recs=periodRecs(), ops=opStats(recs), q=norm(S.q);
+  if(q) ops=ops.filter(function(o){ return norm(o.name).indexOf(q)>=0; });
+  var k=S.opSort[0], d=S.opSort[1];
+  ops.sort(function(a,b){ var x=k==='name'?a.name.localeCompare(b.name):(k==='last'?a.last.dn-b.last.dn:a[k]-b[k]); return x*d || b.n-a.n; });
+  var all=recs.length, ini=recs.filter(function(r){ return timing(r)==='ini'; }).length;
+  var cols=[['name','Operador',''],['n','Checklists',''],['nd','Días',''],['M','Mañana',''],['T','Tarde',''],['N','Noche',''],['pi','Al inicio','del turno'],['fuera','Fuera','de horario'],['other','Otro usuario','lo llenó'],['empty','Comentario','vacío'],['fails','Con fallas',''],['last','Último','checklist']];
+  var h='<section class="card"><div class="sechead"><div><span class="lbl">Operadores · '+esc(periodLabel())+'</span><p class="sub">'+plural(opStats(recs).length,'operador','operadores')+' · '+all+' checklists · '+pct(div(ini,all))+' al inicio del turno. Toca un nombre para ver sus checklists.</p></div>'+
+    '<div class="tools"><label class="vh" for="opQ">Buscar operador</label><input type="search" id="opQ" placeholder="Buscar operador" value="'+esc(S.q)+'"></div></div>';
+  h+='<div class="scroll" style="margin-top:8px"><table class="ops"><thead><tr>'+cols.map(function(c,i){ return '<th class="'+(i?'r':'')+'" data-sort="'+c[0]+'"'+(k===c[0]?' aria-sort="'+(d>0?'ascending':'descending')+'"':'')+'>'+c[1]+(c[2]?'<small>'+c[2]+'</small>':'')+'</th>'; }).join('')+'</tr></thead><tbody>';
+  ops.forEach(function(o){
+    var open=!!S.opOpen[o.key];
+    h+='<tr class="p" aria-expanded="'+open+'"><td><button type="button" data-op="'+esc(o.key)+'">'+esc(o.name)+'</button></td><td class="r">'+o.n+'</td><td class="r">'+o.nd+'</td><td class="r">'+o.M+'</td><td class="r">'+o.T+'</td><td class="r">'+o.N+'</td>'+
+      '<td class="r">'+mini(o.pi,o.pi>=0.9?'good':o.pi>=0.7?'warn':'crit')+'</td><td class="r">'+tagN(o.fuera,o.n)+'</td><td class="r">'+tagN(o.other,o.n)+'</td><td class="r">'+tagN(o.empty,o.n)+'</td><td class="r">'+(o.fails||'<span class="dim">0</span>')+'</td>'+
+      '<td class="r">'+esc(fDate(o.last.dn))+' <span class="dim">'+SHN[o.last.t]+'</span></td></tr>';
+    if(open){ var rr=recs.filter(function(r){ return r.key===o.key; }).slice().reverse(); h+='<tr class="d"><td colspan="'+cols.length+'"><p class="sub" style="margin-bottom:6px">Montacargas: '+Object.keys(o.units).map(function(u){ return esc(u)+' ('+o.units[u]+')'; }).join(', ')+'</p>'+recTable(rr.slice(0,60),false,'inner')+(rr.length>60?'<p class="sub" style="margin-top:6px">Mostrando los 60 más recientes de '+rr.length+'.</p>':'')+'</td></tr>'; }
+  });
+  if(!ops.length) h+='<tr><td colspan="'+cols.length+'" class="empty-s">Sin operadores para esta búsqueda.</td></tr>';
+  h+='</tbody></table></div></section>';
+  h+='<section class="card notes"><span class="lbl">Qué significa cada columna</span><ul>'+
+    '<li><b>Al inicio del turno:</b> checklists llenados desde 1 h antes hasta '+S.cfg.tol+' h después del inicio del turno marcado.</li>'+
+    '<li><b>Fuera de horario:</b> la hora de llenado no cae dentro de las 8 h del turno marcado (posible turno mal seleccionado).</li>'+
+    '<li><b>Otro usuario lo llenó:</b> el checklist del operador se hizo con el usuario de VecFleet que normalmente usa otra persona.</li>'+
+    '<li><b>Comentario vacío:</b> el campo de comentarios quedó en blanco o solo con un signo (por ejemplo ".").</li></ul></section>';
+  document.getElementById('vOps').innerHTML=h;
+}
+function tagN(n,t){ if(!n) return '<span class="dim">0</span>'; var p=n/t; return '<span class="tag '+(p>=0.2?'bad':p>=0.05?'mid':'')+'">'+n+' · '+pct(p)+'</span>'; }
+function recTable(rr,withOp,cls){
+  return '<div class="scroll"><table class="'+(cls||'')+'"><thead><tr><th>Fecha</th><th>Turno</th><th class="r">Hora</th>'+(withOp!==false?'<th>Operador</th>':'')+'<th>Montacargas</th><th>Llenado</th><th>Fallas</th><th>Comentario</th><th></th></tr></thead><tbody>'+
+    rr.map(function(r){ var tm=timing(r); return '<tr><td>'+esc(fDate(r.dn))+'</td><td>'+SHN[r.t]+'</td><td class="r">'+hm(r.min)+'</td>'+(withOp!==false?'<td>'+esc(opName(r.op))+(r.other?' <span class="tag mid">otro usuario</span>':'')+'</td>':'')+
+      '<td>'+esc(r.unit)+'</td><td>'+(tm==='ini'?'<span class="dim">Al inicio</span>':'<span class="tag '+(tm==='fuera'?'bad':'mid')+'">'+(tm==='fuera'?'Fuera de horario':'Después del inicio')+'</span>')+(withOp===false&&r.other?' <span class="tag mid">otro usuario</span>':'')+'</td>'+
+      '<td>'+(r.bad.length?esc(r.bad.map(function(i){ return S.items[i]||('Punto '+(i+1)); }).join(', ')):r.fails?r.fails:'<span class="dim">—</span>')+(r.pend?' <span class="tag bad">pendiente</span>':'')+'</td>'+
+      '<td>'+(r.empty?'<span class="tag mid">vacío</span>':esc(r.com))+'</td><td>'+(/^https?:\/\//.test(r.link)?'<a href="'+esc(r.link)+'" target="_blank" rel="noopener">Ver</a>':'')+'</td></tr>'; }).join('')+'</tbody></table></div>';
+}
+
+/* ---------- Fallas y registros ---------- */
+function renderFal(){
+  var recs=periodRecs(), it={}, un={};
+  recs.forEach(function(r){ r.bad.forEach(function(i){ it[i]=(it[i]||0)+1; }); if(r.fails){ un[r.unit]=(un[r.unit]||0)+1; } });
+  var withF=recs.filter(function(r){ return r.fails; }), pend=recs.filter(function(r){ return r.pend; });
+  var h='<div class="two"><section class="card"><span class="lbl">Puntos desaprobados · '+esc(periodLabel())+'</span><p class="sub">'+plural(withF.length,'checklist','checklists')+' con al menos una falla de '+recs.length+' ('+pct(div(withF.length,recs.length))+').</p>'+bars(Object.keys(it).map(function(i){ return [S.items[i]||('Punto '+(+i+1)),it[i]]; }))+'</section>';
+  h+='<section class="card"><span class="lbl">Checklists con fallas por montacargas</span><p class="sub">'+plural(pend.length,'pendiente','pendientes')+' de validar.</p>'+bars(Object.keys(un).map(function(u){ return [u,un[u]]; }))+'</section></div>';
+  if(pend.length) h+='<section class="card"><div class="sechead"><div><span class="lbl">Pendientes de validar</span><p class="sub">Checklists con fallas en estado PENDIENTE en VecFleet.</p></div></div>'+recTable(pend.slice().reverse())+'</section>';
+  var q=norm(S.rq), list=recs.slice().reverse();
+  if(q) list=list.filter(function(r){ return norm([r.op,r.unit,r.com,SHN[r.t],fDate(r.dn),fDateY(r.dn)].join(' ')).indexOf(q)>=0; });
+  h+='<section class="card"><div class="sechead"><div><span class="lbl">Registros · '+esc(periodLabel())+'</span><p class="sub">'+list.length+' checklists'+(list.length>300?', se muestran los 300 más recientes':'')+'.</p></div>'+
+    '<div class="tools"><label class="vh" for="recQ">Buscar</label><input type="search" id="recQ" placeholder="Operador, montacargas, comentario…" value="'+esc(S.rq)+'"></div></div>'+recTable(list.slice(0,300))+'</section>';
+  document.getElementById('vFal').innerHTML=h;
+}
+function bars(a){
+  if(!a.length) return '<p class="empty-s">Sin fallas en este periodo.</p>';
+  a.sort(function(x,y){ return y[1]-x[1]; }); var mx=a[0][1];
+  return '<div class="hbars">'+a.map(function(x){ return '<div class="hrow"><span class="hl">'+esc(x[0])+'</span><span class="ht"><i style="width:'+(x[1]/mx*100).toFixed(1)+'%"></i></span><span class="hv">'+x[1]+'</span></div>'; }).join('')+'</div>';
+}
+
+/* ---------- Plan y reglas ---------- */
+function renderEditor(){
+  var c=S.cfg, mk=S.month==='all'?IX.months[IX.months.length-1]:S.month, act=activeUnits(mk), ud=IX.unitDays[mk]||{};
+  var h='<div class="sechead"><div><h2>Plan y reglas</h2><p class="sub">Define qué se espera para medir la adherencia. Se guarda en este navegador.</p></div><button type="button" class="quiet" id="resetCfg">Restablecer valores</button></div>';
+  h+='<div class="rules"><label>Meta de adherencia (%)<input type="number" min="1" max="100" data-cfg="meta" value="'+c.meta+'"></label>'+
+    SH.map(function(t){ return '<label>Inicio turno '+SHN[t]+'<input type="time" data-start="'+t+'" value="'+esc(c.start[t])+'"></label>'; }).join('')+
+    '<label>Tolerancia al inicio (h)<input type="number" min="0.5" max="8" step="0.5" data-cfg="tol" value="'+c.tol+'"></label>'+
+    '<label>Días mínimos para "en operación"<input type="number" min="1" max="31" data-cfg="minDays" value="'+c.minDays+'"></label></div>';
+  h+='<div><span class="lbl">Días que opera el CD</span><div class="days" style="margin-top:6px">'+DIA.map(function(d,i){ return '<label><input type="checkbox" data-day="'+i+'"'+(c.days[i]?' checked':'')+'> '+d+'</label>'; }).join('')+'</div></div>';
+  h+='<div><span class="lbl">Montacargas</span><p class="sub" style="margin:4px 0 6px;max-width:80ch">Automático: cuenta como en operación los meses en que tiene checklists en al menos '+c.minDays+' días. Desmarca un turno si ese montacargas no trabaja en él. "En operación" indica '+esc(mkLabel(mk))+'.</p>'+
+    '<div class="scroll"><table class="units"><thead><tr><th>Montacargas</th><th class="r">Checklists</th><th class="r">Días en '+MES3[+mk.split('-')[1]-1]+'</th><th>Modo</th>'+SH.map(function(t){ return '<th class="c">'+SHN[t]+'</th>'; }).join('')+'<th>En operación</th></tr></thead><tbody>'+
+    Object.keys(IX.units).sort(function(a,b){ return IX.units[b]-IX.units[a]; }).map(function(u){ var uc=ucfg(u);
+      return '<tr><td><strong>'+esc(u)+'</strong></td><td class="r">'+IX.units[u]+'</td><td class="r">'+Object.keys(ud[u]||{}).length+'</td><td><select data-umode="'+esc(u)+'">'+[['auto','Automático'],['on','Siempre en operación'],['off','No opera']].map(function(o){ return '<option value="'+o[0]+'"'+(uc.mode===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select></td>'+
+        SH.map(function(t){ return '<td class="c"><input type="checkbox" aria-label="'+esc(u+' '+SHN[t])+'" data-ushift="'+esc(u)+'|'+t+'"'+(uc[t]!==false?' checked':'')+'></td>'; }).join('')+
+        '<td>'+(act.indexOf(u)>=0?chip('good','Sí'):'<span class="dim">No</span>')+'</td></tr>'; }).join('')+'</tbody></table></div></div>';
+  document.getElementById('editor').innerHTML=h;
+}
+function setUnit(u,f){ var c=Object.assign({mode:'auto',M:true,T:true,N:true},S.cfg.units[u]||{}); f(c); S.cfg.units[u]=c; }
+
+/* ---------- Eventos ---------- */
+document.getElementById('fileIn').addEventListener('change',function(e){ handleFiles(e.target.files); e.target.value=''; });
+document.getElementById('fileBtn').addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); document.getElementById('fileIn').click(); } });
+var dragN=0;
+document.addEventListener('dragenter',function(e){ e.preventDefault(); dragN++; document.body.classList.add('dragging'); });
+document.addEventListener('dragleave',function(){ if(--dragN<=0){ dragN=0; document.body.classList.remove('dragging'); } });
+document.addEventListener('dragover',function(e){ e.preventDefault(); });
+document.addEventListener('drop',function(e){ e.preventDefault(); dragN=0; document.body.classList.remove('dragging'); handleFiles(e.dataTransfer.files); });
+document.getElementById('monthSel').addEventListener('change',function(e){ S.month=e.target.value; S.sel=null; save(); render(); });
+document.getElementById('cfgBtn').addEventListener('click',function(){ var ed=document.getElementById('editor'); ed.hidden=!ed.hidden; this.setAttribute('aria-expanded',String(!ed.hidden)); if(!ed.hidden) renderEditor(); });
+document.addEventListener('click',function(e){
+  var b;
+  if((b=e.target.closest('[data-shift]'))){ S.shift=b.dataset.shift; save(); render(); return; }
+  if((b=e.target.closest('#tabs [data-view]'))){ S.view=b.dataset.view; save(); render(); return; }
+  if((b=e.target.closest('[data-month]'))){ S.month=b.dataset.month; S.sel=null; save(); render(); return; }
+  if((b=e.target.closest('[data-slot]'))){ var a=b.dataset.slot.split('|'), dn=+a[0]; S.sel=(S.sel&&S.sel.dn===dn&&S.sel.t===a[1])?null:{dn:dn,t:a[1]}; renderAdh(); var f=document.querySelector('[data-slot="'+b.dataset.slot+'"]'); if(f) f.focus(); return; }
+  if(e.target.closest('[data-close]')){ S.sel=null; renderAdh(); return; }
+  if((b=e.target.closest('[data-op]'))){ var k=b.dataset.op; S.opOpen[k]=!S.opOpen[k]; renderOps(); var g=document.querySelector('[data-op="'+CSS.escape(k)+'"]'); if(g) g.focus(); return; }
+  if((b=e.target.closest('th[data-sort]'))){ var s=b.dataset.sort; S.opSort=S.opSort[0]===s?[s,-S.opSort[1]]:[s,s==='name'?1:-1]; renderOps(); return; }
+  if(e.target.id==='resetCfg'){ S.cfg=defCfg(); save(); render(); return; }
+});
+document.addEventListener('keydown',function(e){ var r=e.target.closest&&e.target.closest('tr[data-month]'); if(r&&(e.key==='Enter'||e.key===' ')){ e.preventDefault(); r.click(); } });
+document.addEventListener('input',function(e){
+  var t=e.target, pos;
+  if(t.id==='opQ'){ S.q=t.value; pos=t.selectionStart; renderOps(); var n=document.getElementById('opQ'); n.focus(); n.setSelectionRange(pos,pos); }
+  if(t.id==='recQ'){ S.rq=t.value; pos=t.selectionStart; renderFal(); var m=document.getElementById('recQ'); m.focus(); m.setSelectionRange(pos,pos); }
+});
+document.addEventListener('change',function(e){
+  var t=e.target, d=t.dataset; if(!t.closest('#editor')) return;
+  if(d.cfg){ var v=parseFloat(t.value); if(!isFinite(v)) return; if(d.cfg==='meta') v=Math.max(1,Math.min(100,Math.round(v))); if(d.cfg==='minDays') v=Math.max(1,Math.round(v)); if(d.cfg==='tol') v=Math.max(0.5,Math.min(8,v)); S.cfg[d.cfg]=v; }
+  else if(d.start){ if(t.value) S.cfg.start[d.start]=t.value; }
+  else if(d.day!=null){ S.cfg.days[+d.day]=t.checked?1:0; }
+  else if(d.umode){ setUnit(d.umode,function(c){ c.mode=t.value; }); }
+  else if(d.ushift){ var p=d.ushift.split('|'); setUnit(p[0],function(c){ c[p[1]]=t.checked; }); }
+  else return;
+  save(); render();
+});
+var tip=document.getElementById('tip');
+function showTip(el,x,y){ tip.textContent=el.dataset.tip; tip.hidden=false; var w=tip.offsetWidth,h=tip.offsetHeight; tip.style.left=Math.max(8,Math.min(window.innerWidth-w-8,x+12))+'px'; tip.style.top=Math.max(8,(y-h-12<8?y+18:y-h-12))+'px'; }
+document.addEventListener('mousemove',function(e){ var el=e.target.closest&&e.target.closest('[data-tip]'); if(el) showTip(el,e.clientX,e.clientY); else tip.hidden=true; });
+document.addEventListener('focusin',function(e){ var el=e.target.closest&&e.target.closest('[data-tip]'); if(el){ var r=el.getBoundingClientRect(); showTip(el,r.left,r.top); } else tip.hidden=true; });
+document.addEventListener('scroll',function(){ tip.hidden=true; },true);
+
+load(); if(S.recs.length) index(); render();
+</script>
+</body>
+</html>
