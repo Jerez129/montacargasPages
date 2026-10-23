@@ -294,7 +294,7 @@ table.plan.roster{min-width:980px}
 
   <section id="empty" class="drop">
     <h2>Arrastra aquí el Excel del checklist de VecFleet</h2>
-    <p class="sub">El archivo se lee en tu navegador y no se sube a ningún servidor. Debe traer las columnas Fecha y hora de Creación, Chofer, TURNO y Movil, como el export "VecFleet-checklist". Puedes cargar varios exports: se combinan por ID sin duplicar.</p>
+    <p class="sub">Los checklists se guardan en la base de datos del tablero (pide la clave de edición), así los demás los ven sin cargar el Excel. Debe traer las columnas Fecha y hora de Creación, Chofer, TURNO y Movil, como el export "VecFleet-checklist". Puedes cargar varios exports: se combinan por ID sin duplicar.</p>
     <label class="btn pri" for="fileIn">Elegir archivo</label>
   </section>
 
@@ -418,7 +418,7 @@ function readBook(wb){
 function handleFiles(files){
   files=Array.prototype.slice.call(files||[]); if(!files.length) return;
   hide('msg'); hide('info');
-  var done=0, added=0, upd=0, names=[], bad=[], plans=[];
+  var done=0, added=0, upd=0, names=[], bad=[], plans=[], loaded=[];
   files.forEach(function(f){
     var fr=new FileReader();
     fr.onload=function(){
@@ -429,24 +429,26 @@ function handleFiles(files){
         else{
           var byId={}; S.recs.forEach(function(r,i){ byId[r.id]=i; });
           res.recs.forEach(function(r){ if(byId[r.id]!=null){ S.recs[byId[r.id]]=r; upd++; } else { byId[r.id]=S.recs.length; S.recs.push(r); added++; } });
-          if(res.items && res.items.length) S.items=res.items; if(res.base) S.base=res.base; names.push(f.name);
+          if(res.items && res.items.length) S.items=res.items; if(res.base) S.base=res.base; names.push(f.name); loaded=loaded.concat(res.recs);
         }
       }catch(e){ bad.push(f.name); }
       if(++done===files.length){
-        if(names.length||bad.length) afterLoad(names,bad,added,upd);
+        if(names.length||bad.length) afterLoad(names,bad,added,upd,loaded);
         if(plans.length){ var last=plans[plans.length-1]; importRoster(last[0],last[1]); }
       }
     };
     fr.readAsArrayBuffer(f);
   });
 }
-function afterLoad(names,bad,added,upd){
+function afterLoad(names,bad,added,upd,loaded){
   if(bad.length) show('msg','No encontré checklists ni planificación en: '+bad.join(', ')+'. El export de VecFleet debe traer las columnas Fecha y hora de Creación, Chofer, TURNO y Movil; la planificación, una hoja con Semana, Operador y los días Lun a Dom.');
   if(names.length){
     S.fileName=names.join(', '); S.month=null; S.sel=null; S.opOpen={};
     show('info','Listo: '+plural(added,'checklist nuevo','checklists nuevos')+(upd?' y '+plural(upd,'actualizado','actualizados'):'')+' de '+S.fileName+'. Total cargado: '+S.recs.length+'.');
   }
   index(); save(); render();
+  // Lo que se carga de VecFleet también se guarda en la base de datos, para que todos lo vean sin cargar el Excel.
+  if(loaded && loaded.length) saveChecks(loaded);
 }
 function show(id,t){ var e=document.getElementById(id); e.textContent=t; e.hidden=false; }
 function hide(id){ document.getElementById(id).hidden=true; }
@@ -827,7 +829,7 @@ function renderEditor(){
    El navegador guarda una copia por si no hay conexión; la base es la que manda. */
 /* En pruebas locales se puede apuntar a otro Worker con ?api=http://localhost:8787 */
 var API = (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) && new URLSearchParams(location.search).get('api')) || 'https://montacargas-api.japf20092004.workers.dev';
-var KEYK='montacargas-clave', DB={ready:false, noKey:false, dirty:false, updated:null};
+var KEYK='montacargas-clave', DB={ready:false, noKey:false, dirty:false, updated:null, pendChecks:null};
 function getClave(){ try{ return localStorage.getItem(KEYK)||''; }catch(_){ return ''; } }
 function setClave(k){ try{ if(k) localStorage.setItem(KEYK,k); else localStorage.removeItem(KEYK); }catch(_){} }
 function setSync(st, txt){
@@ -856,7 +858,7 @@ function write(method, path, body){
     setClave('');
     return askKey().then(function(ok){ if(!ok) throw e; return api(method, path, body); });
   }).then(function(d){ DB.updated=new Date().toISOString(); setSync('ok'); return d; })
-    .catch(function(e){ DB.dirty=true; if(e.status===401){ setClave(''); DB.noKey=true; }
+    .catch(function(e){ if(path!=='/api/checks') DB.dirty=true; if(e.status===401){ setClave(''); DB.noKey=true; }
       setSync('err', e.status===401 ? 'No se guardó: falta la clave (toca aquí)' : 'Cambios sin guardar en la base (toca aquí)'); throw e; });
 }
 function cfgNow(){ var c=S.cfg; return {meta:c.meta, days:c.days, start:c.start, tol:c.tol, minDays:c.minDays, tz:c.tz, cfgv:c.cfgv}; }
@@ -876,17 +878,37 @@ function applyCfg(c){
   S.cfg=Object.assign(defCfg(), S.cfg, c); S.cfg.start=Object.assign(defCfg().start, c.start||{});
   if(S.cfg.tz!==tz && S.recs.length){ S.recs.forEach(mkRec); index(); }
 }
-/* Trae la planificación y las reglas de la base y reemplaza la copia del navegador. */
+/* Checklists de VecFleet en la base: se suben en tandas de 400; si falla (por ejemplo, sin clave), quedan pendientes para reintentar. */
+function checkOut(r){ return {id:r.id, y:r.y, m:r.m, d:r.d, min:r.min, t:r.t, unit:r.unit, op:r.op, by:r.by, pend:r.pend?1:0, fails:r.fails, bad:r.bad, com:r.com, link:r.link}; }
+function checkIn(c){ var bad=[]; try{ bad=JSON.parse(c.bad||'[]'); }catch(_){}
+  return mkRec({id:c.id, y:c.y, m:c.m, d:c.d, min:c.min, t:c.t, unit:c.unit||'', op:c.op||'', by:c.by_h||'', pend:!!c.pend, fails:c.fails||0, bad:bad, com:c.com||'', link:c.link||''}); }
+function saveChecks(list){
+  DB.pendChecks=list; var i=0, added=0, total=0;
+  function next(){ if(i>=list.length) return Promise.resolve(); var part=list.slice(i,i+400).map(checkOut); i+=400;
+    return write('POST','/api/checks',{checks:part, meta:{items:S.items, base:S.base, fileName:S.fileName}}).then(function(d){ added+=d.added||0; total=d.total||0; return next(); }); }
+  return next().then(function(){ DB.pendChecks=null;
+    show('info','Checklists guardados en la base de datos: '+plural(added,'nuevo','nuevos')+(list.length-added>0?' y '+(list.length-added)+' que ya estaban (se actualizaron)':'')+'. Total en la base: '+total+'.');
+    return pullRemote(); })
+    .catch(function(){ show('msg','Los checklists se cargaron en este navegador pero no se guardaron en la base de datos. Toca el aviso de la base de datos (arriba a la derecha) para escribir la clave y reintentar.'); });
+}
+/* Trae los checklists, la planificación y las reglas de la base y reemplaza la copia del navegador. */
 function pullRemote(){
   setSync('load');
   return api('GET','/api/state').then(function(d){
-    var empty=!(d.roster||[]).length;
-    if(empty && !DB.ready && S.roster.length && confirm('La base de datos todavía no tiene planificación. ¿Subir la que tienes en este navegador?')){
-      DB.ready=true; return pushAll().then(pullRemote).catch(function(){});
-    }
+    var empty=!(d.roster||[]).length, dc=d.checks||[];
+    var upR=empty && !DB.ready && S.roster.length && confirm('La base de datos todavía no tiene planificación. ¿Subir la que tienes en este navegador?');
+    var upC=!dc.length && !DB.ready && S.recs.length && confirm('La base de datos todavía no tiene checklists. ¿Subir los '+S.recs.length+' que tienes en este navegador?');
     DB.ready=true;
+    if(upR||upC) return (upR?pushAll():Promise.resolve()).then(function(){ return upC?saveChecks(S.recs.slice()):pullRemote(); }).catch(function(){});
     if(!DB.dirty){ S.roster=(d.roster||[]).map(cleanRow); indexRoster(); }
     if(d.config && d.config.ajustes) applyCfg(d.config.ajustes);
+    // La base manda: se reemplazan los checklists del navegador, conservando los que no se pudieron subir todavía.
+    if(dc.length){
+      var ids={}; S.recs=dc.map(checkIn); S.recs.forEach(function(r){ ids[r.id]=1; });
+      (DB.pendChecks||[]).forEach(function(r){ if(!ids[r.id]) S.recs.push(r); });
+      var dm=(d.config&&d.config.datos)||{}; if(dm.items&&dm.items.length) S.items=dm.items; if(dm.base) S.base=dm.base; if(dm.fileName) S.fileName=dm.fileName;
+      index();
+    }
     DB.updated=d.updated ? d.updated.replace(' ','T')+'Z' : null;
     save(); render();
     if(DB.dirty) setSync('err','Cambios sin guardar en la base (toca aquí)');
@@ -1090,6 +1112,7 @@ document.addEventListener('click',function(e){
 document.getElementById('syncBtn').addEventListener('click',function(){
   var k=prompt('Clave de edición para guardar en la base (déjala vacía para olvidarla en este navegador):', ''); if(k===null) return;
   setClave(k.trim()); DB.noKey=false; setSync('ok', k.trim()?'Clave guardada en este navegador':'Clave olvidada');
+  if(DB.pendChecks && getClave()){ saveChecks(DB.pendChecks); return; }
   if(DB.dirty && getClave()) pushAll().then(function(){ return write('PUT','/api/config/ajustes',cfgNow()); }).then(pullRemote).catch(function(){}); else pullRemote();
 });
 document.addEventListener('keydown',function(e){ var r=e.target.closest&&e.target.closest('tr[data-month],tr[data-week]'); if(r&&(e.key==='Enter'||e.key===' ')){ e.preventDefault(); r.click(); } });
